@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sonar 3D Hardware</title>
+<meta name="description" content="Fase 2 del sonar estilo Batman: escáner 3D de 40 kHz con Raspberry Pi Pico, HC-SR04, amplificador MCP6002 y pan-tilt. Plano, armado, pruebas, arquitectura y hoja de ruta con progreso.">
+<link rel="stylesheet" href="docs.css">
+<style>
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.phase header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:4px}
+.phase header h3{margin:0;font-size:1.08rem;flex:1;min-width:200px}
+.phase .pid{font:700 .78rem/1 var(--mono);color:var(--faint)}
+.phase .pbar{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin:8px 0 10px}
+.phase .pbar i{display:block;height:100%;width:0;background:var(--ok);transition:width .3s}
+.phase.done{border-color:color-mix(in srgb,var(--ok) 50%,var(--border))}
+.phase .goal{color:var(--muted);font-size:.93rem;margin:.2rem 0 .4rem}
+.todo{list-style:none;padding:0;margin:6px 0 0}
+.todo li{margin:0;padding:6px 0;border-top:1px dashed var(--border);font-size:.93rem}
+.todo label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.todo input{margin-top:4px;width:16px;height:16px;accent-color:var(--ok);flex:none}
+.todo input:disabled{cursor:default}
+.todo li.is-done span{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 50%,transparent)}
+.board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:18px 0}
+.board a{display:block;text-decoration:none;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:.8rem;line-height:1.3}
+.board a b{display:block;font:700 .72rem/1 var(--mono);color:var(--faint);margin-bottom:6px}
+.board a .m{height:4px;border-radius:99px;background:var(--surface-2);margin-top:8px;overflow:hidden}
+.board a .m i{display:block;height:100%;background:var(--ok);width:0}
+.board a.done{border-color:color-mix(in srgb,var(--ok) 55%,var(--border));background:var(--ok-soft)}
+.overall{display:flex;align-items:center;gap:14px;margin-top:8px}
+.overall .ring{--p:0;width:74px;height:74px;border-radius:50%;background:conic-gradient(var(--ok) calc(var(--p)*1%),var(--surface-2) 0);display:grid;place-items:center;flex:none}
+.overall .ring span{width:56px;height:56px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font:800 1rem/1 var(--sans)}
+.bom td:first-child{width:34px}
+.bom input{width:16px;height:16px;accent-color:var(--ok)}
+.bom tr.got td{color:var(--muted)}
+.wiring text{font-size:13px}
+.wiring .pin{font:600 12px var(--mono)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--muted);margin:8px 2px 0}
+.legend i{display:inline-block;width:22px;height:4px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.pl{font-size:.75rem;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--info-soft);color:var(--info);white-space:nowrap}
+@media (max-width:900px){.board{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.board{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="iconbtn" id="menuBtn" aria-label="Abrir índice">☰</button>
+  <a class="brand" href="#inicio">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.5"/><circle cx="16" cy="16" r="4" fill="#d9a520"/><path d="M16 16 L29 9" stroke="#d9a520" stroke-width="2" stroke-linecap="round"/></svg>
+    Batman Sonar <small>fase 2 · hardware</small>
+  </a>
+  <span class="spacer"></span>
+  <a class="iconbtn" href="index.html" style="text-decoration:none">← Fase 1</a>
+  <button class="iconbtn" id="themeBtn" aria-label="Cambiar tema">◐ <span id="themeLbl">Tema</span></button>
+  <div class="progress" id="readProgress"></div>
+</header>
+
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Índice">
+  <div class="group">Visión</div>
+  <a href="#inicio">Inicio y progreso</a>
+  <a href="#porque">Por qué hardware dedicado</a>
+  <a href="#funciona">Cómo funciona el escáner</a>
+  <div class="group">Construir</div>
+  <a href="#materiales">Materiales</a>
+  <a href="#plano">Plano del circuito</a>
+  <a href="#amplificador">El amplificador</a>
+  <a href="#armado">Armado paso a paso</a>
+  <a href="#pruebas">Pruebas de encendido</a>
+  <div class="group">Software</div>
+  <a href="#arquitectura">Arquitectura propuesta</a>
+  <a href="#protocolo">Protocolo Pico ↔ PC</a>
+  <a href="#procesamiento">Procesamiento a 40 kHz</a>
+  <div class="group">Terminar</div>
+  <a href="#roadmap">Hoja de ruta</a>
+  <a href="#esperar">Qué esperar</a>
+  <a href="#riesgos">Riesgos</a>
+  <a href="#bitacora">Bitácora</a>
+  <a href="#seguridad">Seguridad</a>
+</nav>
+
+<main>
+<div class="content">
+
+<!-- ============================================================ INICIO -->
+<section id="inicio" class="hero">
+  <div class="eyebrow">Fase 2 · En construcción</div>
+  <h1>Sonar 3D: <span>ver el cuarto</span> con ultrasonido</h1>
+  <p class="lead">La fase 1 demostró que el sonar funciona con el parlante y el micrófono de una laptop, pero sólo mide
+  <em>distancia</em>. Para dibujar el entorno en pantalla, como en <em>The Dark Knight</em>, hace falta saber también la
+  <em>dirección</em> de cada eco. Esta fase usa un haz ultrasónico de 40 kHz, que es direccional, montado sobre servos que
+  barren el cuarto, con una Raspberry Pi Pico que emite, graba y mueve todo. Cuesta unos 97.000 COP (~25 USD).</p>
+  <div class="badges">
+    <span class="badge">Raspberry Pi Pico H</span>
+    <span class="badge">HC-SR04 · 40 kHz</span>
+    <span class="badge">MCP6002</span>
+    <span class="badge">pan-tilt SG90</span>
+    <span class="badge">ADC <b>500 kS/s</b></span>
+  </div>
+
+  <div class="overall">
+    <div class="ring" id="ring"><span id="ringTxt">0%</span></div>
+    <div>
+      <div style="font-weight:700">Progreso del proyecto</div>
+      <div style="color:var(--muted);font-size:.9rem" id="overallTxt">—</div>
+      <div style="color:var(--faint);font-size:.8rem">Marca las tareas en la <a href="#roadmap">hoja de ruta</a>; se guardan en este navegador.</div>
+    </div>
+  </div>
+  <div class="board" id="board"></div>
+
+  <div class="callout">
+    <b class="t">Estado honesto a 29-oct-2026</b>
+    <p>Hechos: la fase 1 (sonar acústico, 88 tests), el diseño, la compra de las piezas y el plano del circuito. <strong>Falta todo
+    lo demás</strong>: el armado, el firmware de la Pico, el software de escaneo 3D y la validación. Lo que en esta página aparece
+    como <span class="pl">propuesta</span> es diseño aún no implementado y puede cambiar.</p>
+  </div>
+</section>
+
+<!-- ============================================================ POR QUÉ -->
+<section id="porque">
+  <div class="eyebrow">Visión</div>
+  <h2>Por qué hardware dedicado</h2>
+  <p>Girar la laptop con servos no sirve: su parlante y su micrófono son casi <strong>omnidireccionales</strong>. La pared a
+  2.78 m devolvería el mismo eco desde cualquier ángulo, y la "imagen" sería una esfera borrosa. Lo que da la dirección es un
+  <strong>haz estrecho</strong>, y el ancho de un haz depende de la relación λ/D entre la longitud de onda y el tamaño del emisor.</p>
+  <div class="grid g2">
+    <div class="card"><h4>5 kHz (laptop)</h4><p>λ = 6.9 cm. Para un haz estrecho haría falta un emisor de medio metro.</p></div>
+    <div class="card"><h4>40 kHz (HC-SR04)</h4><p>λ = 8.6 mm. Un transductor de 16 mm ya forma un haz direccional.</p></div>
+  </div>
+  <div class="tablewrap"><table>
+    <tr><th></th><th>Fase 1 · laptop</th><th>Fase 2 · Pico + 40 kHz</th></tr>
+    <tr><td>Dirección</td><td>No (omnidireccional)</td><td>Sí: haz de unos 15–30° apuntado por servos</td></tr>
+    <tr><td>Reloj</td><td>Windows, latencia de 42 ms y buffers perdidos</td><td>Un solo reloj: la Pico dispara y muestrea, sin latencia desconocida</td></tr>
+    <tr><td>Muestreo</td><td>48 kHz</td><td>500 kHz (ADC del RP2040)</td></tr>
+    <tr><td>Primer metro</td><td>Tapado por la resonancia del parlante y el chasis</td><td>Sólo la diafonía TX→RX de los primeros centímetros</td></tr>
+    <tr><td>Audible</td><td>Sí (2–8 kHz)</td><td>No para humanos; sí para perros y gatos</td></tr>
+    <tr><td>Salida</td><td>A-scan (distancia)</td><td>Nube de puntos 3D (.ply) + vista estilo radar</td></tr>
+  </table></div>
+  <details><summary>Primera propuesta descartada: interfaz de audio USB</summary>
+    <p>El primer diseño (28-oct) usaba una interfaz Behringer UMC202HD de 192 kHz con un par de transductores TCT40-16T/R. La tienda
+    local no vendía interfaces de audio, y los transductores sueltos estaban agotados. El rediseño con la Pico sale más barato
+    (~25 USD en vez de 100–170) y una sola placa emite, graba y mueve los servos.</p></details>
+</section>
+
+<!-- ============================================================ FUNCIONA -->
+<section id="funciona">
+  <div class="eyebrow">Visión</div>
+  <h2>Cómo funciona el escáner</h2>
+  <div class="flow">
+    <div class="n"><i>1</i><b>Apuntar</b><span>los servos van a (pan, tilt)</span></div>
+    <div class="n"><i>2</i><b>Disparar</b><span>la Pico da un pulso de 10 µs en TRIG y el HC-SR04 emite 8 ciclos de 40 kHz</span></div>
+    <div class="n"><i>3</i><b>Escuchar</b><span>el receptor capta el eco y el MCP6002 lo amplifica</span></div>
+    <div class="n"><i>4</i><b>Grabar</b><span>ADC por DMA a 500 kS/s durante ~24 ms</span></div>
+    <div class="n"><i>5</i><b>Promediar</b><span>N pings por dirección</span></div>
+    <div class="n hl"><i>6</i><b>Detectar</b><span>el mismo pipeline de la fase 1 (filtro adaptado + CFAR)</span></div>
+    <div class="n hl"><i>7</i><b>Proyectar</b><span>(r, pan, tilt) → (x, y, z)</span></div>
+    <div class="n"><i>8</i><b>Dibujar</b><span>nube 3D + exportar .ply</span></div>
+  </div>
+  <h3>De eco a punto 3D</h3>
+  <div class="formula">x = r·cos(tilt)·sin(pan) &nbsp;&nbsp; y = r·cos(tilt)·cos(pan) &nbsp;&nbsp; z = r·sin(tilt)</div>
+  <p>Cada eco que pasa la detección se convierte en un punto con intensidad igual a su SNR. Si el haz no es estrecho, el punto se
+  "unta" sobre todo el cono: por eso la resolución angular la pone el haz, no el paso del servo.</p>
+  <h3>Cuánto tarda</h3>
+  <p>Ejemplo: pan de −60° a +60° y tilt de −15° a +30°, ambos en pasos de 5°, son 25 × 10 = 250 direcciones. Cada una tarda unos
+  0.2 s en asentar el servo más 8 pings × 30 ms, en total ≈ 0.44 s. El escaneo completo toma <strong>≈ 2 minutos</strong>.</p>
+  <p>Los pings van separados ~30 ms para que la reverberación del anterior se apague: eso son 10 m de recorrido, o sea 5 m de alcance.</p>
+</section>
+
+<!-- ============================================================ MATERIALES -->
+<section id="materiales">
+  <div class="eyebrow">Construir</div>
+  <h2>Lista de materiales</h2>
+  <p>Comprados en <a href="https://www.didacticaselectronicas.com">didacticaselectronicas.com</a> (Colombia). Precios y stock al
+  28-oct-2026. Marca lo que ya tienes en la mesa de trabajo.</p>
+  <div class="tablewrap"><table class="bom" id="bom">
+    <tr><th></th><th>Pieza</th><th>Cant.</th><th>COP c/u</th><th>Para qué</th></tr>
+    <tr><td><input type="checkbox" data-bom="pico"></td><td><a href="https://www.didacticaselectronicas.com/shop/rpi-pico-h-raspberry-pi-pico-h-21164">Raspberry Pi Pico H</a></td><td>1</td><td>20.944</td><td>Dispara, muestrea a 500 kHz, mueve los servos, habla con el PC por USB</td></tr>
+    <tr><td><input type="checkbox" data-bom="hc"></td><td><a href="https://www.didacticaselectronicas.com/shop/hc-sr04-sensor-de-distancia-ultrasonico-2-450cm-2264">HC-SR04</a></td><td>3</td><td>4.522</td><td>#1 emisor (sin modificar), #2 donante del receptor, #3 repuesto</td></tr>
+    <tr><td><input type="checkbox" data-bom="ptz"></td><td><a href="https://www.didacticaselectronicas.com/shop/ptz-pan-tilt-sg90-soporte-ptz-pan-tilt-con-servos-sg90-48812">Soporte pan-tilt + 2 servos SG90</a></td><td>1</td><td>19.888</td><td>Apuntar el haz</td></tr>
+    <tr><td><input type="checkbox" data-bom="mcp"></td><td><a href="https://www.didacticaselectronicas.com/shop/mcp6002-e-p-amplificador-operacional-dual-mcp6002-e-p-original-microchip-1955">MCP6002-E/P (DIP-8)</a></td><td>2</td><td>3.142</td><td>Amplificar el eco (uno es repuesto)</td></tr>
+    <tr><td><input type="checkbox" data-bom="proto"></td><td><a href="https://www.didacticaselectronicas.com/shop/proto102cl-protoboard-transparente-830-puntos-de-insercion-9942">Protoboard 830 puntos</a></td><td>1</td><td>8.482</td><td>Montar sin soldar</td></tr>
+    <tr><td><input type="checkbox" data-bom="jump"></td><td><a href="https://www.didacticaselectronicas.com/shop/bbj-140-kit-de-cables-de-puente-preformados-de-140-piezas-awg22-15486">Kit 140 cables puente</a></td><td>1</td><td>14.451</td><td>Conexiones en la protoboard</td></tr>
+    <tr><td><input type="checkbox" data-bom="res"></td><td><a href="https://www.didacticaselectronicas.com/shop/kit-rt-1-4-kit-de-200-resistencias-surtidas-1-4w-9992">Kit 200 resistencias ¼ W</a></td><td>1</td><td>9.401</td><td>Se usan 4× 10 kΩ, 1× 22 kΩ y 2× 1 kΩ</td></tr>
+    <tr><td><input type="checkbox" data-bom="c100n"></td><td><a href="https://www.didacticaselectronicas.com/shop/cc0-1uf50v-capacitor-ceramico-0-1uf-50v-104-10717">Condensador cerámico 100 nF (104)</a></td><td>3</td><td>73</td><td>Acople de la ganancia y desacople del chip</td></tr>
+    <tr><td><input type="checkbox" data-bom="c10u"></td><td><a href="https://www.didacticaselectronicas.com/shop/ce10uf25v-capacitor-electrolitico-aluminio-10uf-25v-9524">Electrolítico 10 µF 25 V</a></td><td>1</td><td>96</td><td>Estabilizar la referencia de 1.65 V</td></tr>
+    <tr><td><input type="checkbox" data-bom="c470u"></td><td><a href="https://www.didacticaselectronicas.com/shop/ce470uf100v-capacitor-electrolitico-470uf-100v-35317">Electrolítico 470 µF 100 V</a></td><td>1</td><td>1.647</td><td>Reserva de corriente para los servos</td></tr>
+    <tr><td><input type="checkbox" data-bom="dupont"></td><td><a href="https://www.didacticaselectronicas.com/shop/easy-cab-10-mh-30-cable-conexion-facil-dupont-m-h-30cm-10-unidades-colores-diferentes-43007">Dupont M/H 30 cm ×10</a></td><td>1</td><td>2.094</td><td>HC-SR04 y servos a la protoboard</td></tr>
+    <tr><td><input type="checkbox" data-bom="usb"></td><td>Cable micro-USB <strong>de datos</strong></td><td>1</td><td>—</td><td>Muchos cables sólo cargan y no transmiten datos</td></tr>
+    <tr><td><input type="checkbox" data-bom="iron"></td><td>Cautín y estaño</td><td>—</td><td>—</td><td>Desoldar el receptor del HC-SR04 #2: es lo único que se suelda</td></tr>
+    <tr><td><input type="checkbox" data-bom="dmm"></td><td>Multímetro <em>(muy recomendado)</em></td><td>—</td><td>—</td><td>Medir los 1.65 V y la continuidad</td></tr>
+  </table></div>
+  <p><strong>Total ≈ 97.000 COP</strong> sin envío. <span id="bomTxt" style="color:var(--muted)"></span></p>
+  <div class="callout warn"><p>Verifica que los condensadores de 100 nF sean <strong>de patitas</strong> y no SMD. El de 470 µF
+  a 100 V es más grande de lo necesario, pero sirve igual.</p></div>
+</section>
+
+<!-- ============================================================ PLANO -->
+<section id="plano">
+  <div class="eyebrow">Construir</div>
+  <h2>Plano del circuito</h2>
+  <div class="diagram wiring">
+    <svg viewBox="0 0 960 560" role="img" aria-label="Diagrama de conexiones: PC, Pico, HC-SR04 emisor, amplificador MCP6002, receptor, servos y condensador">
+      <defs>
+        <style>.w{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.r{stroke:#d33}.o{stroke:#e8891a}.b{stroke:#3a7bd5}.g{stroke:#2e9d5b}.k{stroke:var(--text)}</style>
+      </defs>
+      <!-- PC -->
+      <rect x="20" y="215" width="110" height="80" rx="10" fill="var(--surface-2)" stroke="var(--muted)"/>
+      <text x="75" y="250" text-anchor="middle" font-weight="700">PC</text>
+      <text x="75" y="270" text-anchor="middle" class="muted" font-size="11">Python · scan3d</text>
+      <path d="M130 255 H190" class="w k" stroke-dasharray="6 4"/>
+      <text x="160" y="245" text-anchor="middle" class="muted" font-size="11">USB</text>
+      <!-- Pico -->
+      <rect x="190" y="140" width="170" height="270" rx="10" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+      <text x="275" y="162" text-anchor="middle" font-weight="700">Raspberry Pi Pico H</text>
+      <g class="pin" text-anchor="end">
+        <text x="352" y="179">40 · VBUS</text>
+        <text x="352" y="209">38 · GND</text>
+        <text x="352" y="239">36 · 3V3</text>
+        <text x="352" y="269">33 · AGND</text>
+        <text x="352" y="299">31 · GP26/ADC0</text>
+        <text x="352" y="329">22 · GP17</text>
+        <text x="352" y="359">21 · GP16</text>
+        <text x="352" y="389">20 · GP15</text>
+      </g>
+      <!-- HC-SR04 #1 -->
+      <rect x="640" y="30" width="270" height="100" rx="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+      <text x="775" y="22" text-anchor="middle" font-weight="700">HC-SR04 #1 · EMISOR</text>
+      <circle cx="850" cy="80" r="22" fill="var(--surface-2)" stroke="var(--muted)"/><text x="850" y="85" text-anchor="middle" font-size="12">T</text>
+      <g class="pin"><text x="650" y="58">VCC</text><text x="650" y="80">TRIG</text><text x="650" y="102">ECHO</text><text x="650" y="124">GND</text></g>
+      <path d="M700 94 l16 16 M716 94 l-16 16" stroke="#d33" stroke-width="3"/>
+      <text x="722" y="106" font-size="11" style="fill:#d33" font-weight="700">NO CONECTAR</text>
+      <!-- Amp -->
+      <rect x="640" y="180" width="270" height="90" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="775" y="205" text-anchor="middle" font-weight="700">Amplificador MCP6002</text>
+      <text x="775" y="224" text-anchor="middle" class="muted" font-size="12">2 etapas · ganancia ~×250 · todo a 3.3 V</text>
+      <g class="pin"><text x="650" y="244">VDD</text><text x="650" y="264">OUT (pin 7)</text></g>
+      <!-- RX -->
+      <rect x="780" y="300" width="130" height="56" rx="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+      <circle cx="812" cy="328" r="16" fill="var(--surface-2)" stroke="var(--muted)"/><text x="812" y="333" text-anchor="middle" font-size="12">R</text>
+      <text x="836" y="324" font-size="12" font-weight="700">Receptor</text>
+      <text x="836" y="340" font-size="11" class="muted">del HC-SR04 #2</text>
+      <path d="M845 300 V270" class="w g"/>
+      <text x="852" y="290" font-size="11" class="muted">2 cables trenzados</text>
+      <!-- Servos -->
+      <rect x="640" y="420" width="125" height="64" rx="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+      <text x="702" y="446" text-anchor="middle" font-weight="700">Servo PAN</text>
+      <text x="702" y="464" text-anchor="middle" font-size="11" class="muted">abajo · horizontal</text>
+      <rect x="785" y="420" width="125" height="64" rx="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+      <text x="847" y="446" text-anchor="middle" font-weight="700">Servo TILT</text>
+      <text x="847" y="464" text-anchor="middle" font-size="11" class="muted">arriba · vertical</text>
+      <!-- Wires -->
+      <path d="M360 175 H580 V55 H640" class="w r"/>
+      <path d="M580 175 V432 H640" class="w r"/>
+      <path d="M360 205 H560 V120 H640" class="w k"/>
+      <path d="M560 205 V472 H640" class="w k"/>
+      <path d="M360 265 H560" class="w k"/>
+      <path d="M360 235 H615 V240 H640" class="w o"/>
+      <path d="M360 295 H600 V260 H640" class="w g"/>
+      <path d="M360 385 H540 V77 H640" class="w b"/>
+      <path d="M360 355 H520 V505 H702 V484" class="w b"/>
+      <path d="M360 325 H500 V525 H847 V484" class="w b"/>
+      <!-- 470uF -->
+      <g transform="translate(570 380)">
+        <line x1="-10" y1="-6" x2="10" y2="-6" stroke="#d33" stroke-width="3"/>
+        <line x1="-10" y1="4" x2="10" y2="4" stroke="var(--text)" stroke-width="3"/>
+      </g>
+      <text x="470" y="420" font-size="11" class="muted">470 µF entre +5V y GND</text>
+      <text x="470" y="434" font-size="11" class="muted">(franja blanca → GND)</text>
+      <text x="200" y="440" font-size="12" class="muted">Todos los GND unidos en el riel (−) de la protoboard</text>
+      <text x="200" y="458" font-size="12" class="muted">Servos: rojo → +5V · marrón → GND · naranja → señal</text>
+    </svg>
+    <div class="legend"><span><i style="background:#d33"></i>+5 V (VBUS)</span><span><i style="background:#e8891a"></i>+3.3 V</span><span><i style="background:#3a7bd5"></i>control</span><span><i style="background:#2e9d5b"></i>señal del eco</span><span><i style="background:var(--text)"></i>GND</span></div>
+  </div>
+
+  <h3>Pines de la Pico</h3>
+  <p>Los pines físicos se cuentan desde la esquina del conector USB: del 1 al 20 por un lado y del 21 al 40 por el otro. La
+  numeración viene impresa en la parte de abajo de la placa.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Pin físico</th><th>Nombre</th><th>Se conecta a</th></tr>
+    <tr><td><b>40</b></td><td>VBUS (5 V del USB)</td><td>Riel <b>+5 V</b>: VCC del HC-SR04 #1, rojo de los servos, + del 470 µF</td></tr>
+    <tr><td><b>38</b></td><td>GND</td><td>Riel <b>GND</b></td></tr>
+    <tr><td><b>36</b></td><td>3V3(OUT)</td><td>Riel <b>+3.3 V</b>: <strong>sólo</strong> el MCP6002 y el divisor de referencia</td></tr>
+    <tr><td><b>33</b></td><td>AGND</td><td>GND (tierra del ADC)</td></tr>
+    <tr><td><b>31</b></td><td>GP26 / ADC0</td><td>Salida del amplificador (pin 7 del MCP6002)</td></tr>
+    <tr><td><b>22</b></td><td>GP17</td><td>Señal del servo <b>TILT</b></td></tr>
+    <tr><td><b>21</b></td><td>GP16</td><td>Señal del servo <b>PAN</b></td></tr>
+    <tr><td><b>20</b></td><td>GP15</td><td><b>TRIG</b> del HC-SR04 #1</td></tr>
+  </table></div>
+
+  <h3>HC-SR04 #1 (emisor)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Pin</th><th>Va a</th></tr>
+    <tr><td>VCC</td><td>+5 V (pin 40)</td></tr>
+    <tr><td>TRIG</td><td>GP15 (pin 20)</td></tr>
+    <tr><td>GND</td><td>GND</td></tr>
+    <tr><td><b>ECHO</b></td><td><span class="tag bad">NO CONECTAR</span>: saca 5 V y quema la Pico. No se necesita.</td></tr>
+  </table></div>
+
+  <h3>El receptor (lo único que se suelda)</h3>
+  <ol>
+    <li>En el HC-SR04 #2, mira la serigrafía: cada transductor tiene una <b>T</b> o una <b>R</b> impresa cerca. Desuelda el que dice <b>R</b>.</li>
+    <li>Suelda un cable de 20–30 cm a cada patita (sirve un dupont cortado, del lado macho) y <strong>trénzalos</strong>: el cabezal se mueve y el trenzado reduce el ruido.</li>
+    <li>Con el multímetro, busca cuál patita tiene continuidad con la carcasa metálica: esa va a <b>GND</b>. Si no tienes multímetro funciona en cualquier sentido, sólo que con un poco más de ruido.</li>
+  </ol>
+
+  <h3>Servos y condensador</h3>
+  <p>Marrón → GND · rojo → +5 V · naranja → GP16 (PAN, el de abajo) o GP17 (TILT, el de arriba). Pon el <b>470 µF entre +5 V y GND</b>
+  cerca de los servos: absorbe los picos de corriente que, si no, reinician la Pico.</p>
+  <div class="callout bad"><b class="t">La franja blanca del 470 µF es el negativo y va a GND</b><p>Conectado al revés se puede inflar o reventar.</p></div>
+</section>
+
+<!-- ============================================================ AMPLIFICADOR -->
+<section id="amplificador">
+  <div class="eyebrow">Construir</div>
+  <h2>El amplificador del eco</h2>
+  <p>El eco llega al transductor en <strong>milivoltios</strong>. El ADC de la Pico mide de 0 a 3.3 V. Dos etapas no inversoras
+  con el MCP6002 (amplificador dual rail-to-rail, alimentado a 3.3 V) lo llevan a décimas de voltio, centrado en 1.65 V.</p>
+  <div class="grid g2">
+    <div class="diagram">
+      <svg viewBox="0 0 300 200" role="img" aria-label="Pinout del MCP6002 en encapsulado DIP-8">
+        <rect x="100" y="20" width="100" height="160" rx="6" fill="var(--surface-2)" stroke="var(--muted)" stroke-width="1.5"/>
+        <path d="M138 20 a12 12 0 0 0 24 0" fill="var(--surface)" stroke="var(--muted)"/>
+        <circle cx="114" cy="40" r="4" fill="var(--muted)"/>
+        <g font-size="12"><text x="92" y="50" text-anchor="end">1 OUT A</text><text x="92" y="90" text-anchor="end">2 IN− A</text><text x="92" y="130" text-anchor="end">3 IN+ A</text><text x="92" y="170" text-anchor="end">4 GND</text>
+        <text x="208" y="50">8 +3.3 V</text><text x="208" y="90">7 OUT B</text><text x="208" y="130">6 IN− B</text><text x="208" y="170">5 IN+ B</text></g>
+        <g stroke="var(--muted)" stroke-width="3"><line x1="94" y1="46" x2="100" y2="46"/><line x1="94" y1="86" x2="100" y2="86"/><line x1="94" y1="126" x2="100" y2="126"/><line x1="94" y1="166" x2="100" y2="166"/><line x1="200" y1="46" x2="206" y2="46"/><line x1="200" y1="86" x2="206" y2="86"/><line x1="200" y1="126" x2="206" y2="126"/><line x1="200" y1="166" x2="206" y2="166"/></g>
+      </svg>
+      <p style="font-size:.82rem;color:var(--muted);margin:4px 0 0;text-align:center">Visto desde arriba · la muesca o el punto marca el pin 1</p>
+    </div>
+    <div class="card">
+      <h4>Números clave</h4>
+      <div class="formula" style="white-space:normal">Etapa 1: 1 + 22k/1k = ×23<br>Etapa 2: 1 + 10k/1k = ×11<br>Total en papel: ≈ ×253<br>Corte inferior: 1/(2π·1k·100n) ≈ 1.6 kHz<br>Vmid = 3.3 V / 2 = 1.65 V</div>
+      <p>Los 100 nF en serie con el 1 kΩ hacen que la ganancia sólo actúe sobre la señal que cambia: en DC cada etapa tiene ganancia 1
+      y la salida queda quieta en 1.65 V, la mitad del rango del ADC.</p>
+    </div>
+  </div>
+  <div class="code"><div class="lbl">Esquemático (todo a 3.3 V)<button class="copy">Copiar</button></div><pre>REFERENCIA (Vmid = 1.65 V)
+  +3.3V ──[10k]──┬──[10k]── GND
+                 ├──(10 µF)── GND      (+ hacia Vmid, − hacia GND)
+               Vmid
+
+ETAPA 1 (×23)
+  Receptor patita A ────────────┬──── pin 3 (IN+ A)
+  Receptor patita B (carcasa) ─ GND
+                                └──[10k]── Vmid
+  pin 1 (OUT A) ──[22k]── pin 2 (IN− A)
+  pin 2 (IN− A) ──[1k]──(100 nF)── GND
+
+ETAPA 2 (×11)
+  pin 1 (OUT A) ─────────────────── pin 5 (IN+ B)     cable directo
+  pin 7 (OUT B) ──[10k]── pin 6 (IN− B)
+  pin 6 (IN− B) ──[1k]──(100 nF)── GND
+  pin 7 (OUT B) ─────────────────── Pico GP26 / ADC0 (pin 31)
+
+ALIMENTACIÓN
+  pin 8 (VDD) ── +3.3V      pin 4 (VSS) ── GND
+  pin 8 ──(100 nF)── GND    lo más cerca posible del chip</pre></div>
+  <p><b>Piezas:</b> 4× 10 kΩ, 1× 22 kΩ, 2× 1 kΩ, 3× 100 nF, 1× 10 µF.</p>
+  <div class="callout tip">
+    <b class="t">Nota de diseño: ganancia real a 40 kHz</b>
+    <p>El MCP6002 tiene un producto ganancia-ancho de banda de ~1 MHz. Con ganancia ×23, la etapa 1 sólo llega hasta unos 43 kHz,
+    justo encima de los 40 kHz que nos interesan. A 40 kHz la ganancia real estimada es ≈ ×17 en la etapa 1 y ≈ ×10 en la 2, o sea
+    <strong>≈ ×170 en total</strong> y no ×253. No daña nada; sólo da menos ganancia. Si en las pruebas el eco sale débil, se puede
+    agregar una tercera etapa con el segundo MCP6002.</p>
+  </div>
+</section>
+
+<!-- ============================================================ ARMADO -->
+<section id="armado">
+  <div class="eyebrow">Construir</div>
+  <h2>Armado paso a paso</h2>
+  <p class="lead">En este orden, para poder probar cada parte antes de agregar la siguiente.</p>
+  <div class="steps">
+    <div class="step" data-step="a1"><h3>Pico y rieles de alimentación</h3>
+      <p>Inserta la Pico atravesando el canal central de la protoboard. Une el pin 40 (VBUS) al riel +5 V, el 38 (GND) al riel −,
+      y el 36 (3V3) a un riel aparte de +3.3 V. Une también el 33 (AGND) a GND.</p>
+      <label class="check"><input type="checkbox"> Hecho</label></div>
+    <div class="step" data-step="a2"><h3>Amplificador, sin el receptor</h3>
+      <p>Arma el MCP6002 según el esquemático, con la muesca hacia un lado conocido. Conecta la Pico por USB y mide con el multímetro:</p>
+      <ul><li>Vmid (unión de los dos 10 kΩ): <b>≈ 1.65 V</b></li><li>Pin 7 del MCP6002: <b>≈ 1.65 V</b></li><li>Pin 8: <b>≈ 3.3 V</b></li></ul>
+      <p>Si el pin 7 está en 0 V o en 3.3 V, revisa el divisor, la orientación del chip y los condensadores de 100 nF.</p>
+      <label class="check"><input type="checkbox"> Hecho</label></div>
+    <div class="step" data-step="a3"><h3>Receptor</h3>
+      <p>Desuelda la R del HC-SR04 #2, suelda los cables trenzados y conéctalos: la patita de la carcasa a GND y la otra al pin 3.</p>
+      <label class="check"><input type="checkbox"> Hecho</label></div>
+    <div class="step" data-step="a4"><h3>HC-SR04 #1, sin ECHO</h3>
+      <p>VCC → +5 V, GND → GND, TRIG → GP15. <strong>Deja ECHO al aire.</strong></p>
+      <label class="check"><input type="checkbox"> Hecho</label></div>
+    <div class="step" data-step="a5"><h3>Servos y 470 µF</h3>
+      <p>Conecta el condensador (franja blanca a GND) y luego los servos. <strong>No atornilles todavía los brazos</strong>: primero los
+      centramos a 90° con la prueba P2.</p>
+      <label class="check"><input type="checkbox"> Hecho</label></div>
+    <div class="step" data-step="a6"><h3>Montaje mecánico</h3>
+      <p>Arma el soporte pan-tilt con los servos ya centrados. En la plataforma de arriba fija el HC-SR04 #1 mirando al frente y pega el
+      receptor justo al lado, separado 2–3 cm y apuntando en la misma dirección. Sirve cinta doble faz, silicona caliente o bandas
+      elásticas. Deja holgura en los cables para que no tiren cuando el cabezal gire.</p>
+      <label class="check"><input type="checkbox"> Hecho</label></div>
+  </div>
+  <div class="callout bad">
+    <b class="t">⚠️ Tres errores que dañan algo</b>
+    <ol style="margin:.3rem 0 0"><li><b>ECHO del HC-SR04 conectado a la Pico</b>: la quema (saca 5 V).</li>
+    <li><b>MCP6002 alimentado a 5 V</b>: su salida puede pasar de 3.3 V y dañar el ADC. Aliméntalo sólo del pin 36.</li>
+    <li><b>470 µF al revés</b>.</li></ol>
+  </div>
+</section>
+
+<!-- ============================================================ PRUEBAS -->
+<section id="pruebas">
+  <div class="eyebrow">Construir</div>
+  <h2>Pruebas de encendido</h2>
+  <p>Antes del firmware de captura, unos scripts cortos en <strong>MicroPython</strong> verifican cada parte por separado.
+  Instala MicroPython en la Pico: mantén BOOTSEL presionado al conectar el USB, copia el <code>.uf2</code> oficial de
+  <a href="https://micropython.org/download/RPI_PICO/">micropython.org</a> a la unidad que aparece, y luego usa
+  <a href="https://thonny.org">Thonny</a> o <code>mpremote</code>.</p>
+  <div class="callout"><p>Estos scripts son sólo de diagnóstico. Leer el ADC en un bucle de Python da apenas unas decenas de miles de
+  muestras por segundo; la captura real a 500 kS/s necesita DMA (fase F5).</p></div>
+
+  <h3>P1 · La Pico responde</h3>
+  <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>pip install mpremote
+mpremote connect list          <span class="c"># debe aparecer un puerto COM con la Pico</span>
+mpremote exec "import sys; print(sys.implementation)"</pre></div>
+
+  <h3>P2 · Centrar los servos (antes de atornillar los brazos)</h3>
+  <div class="code"><div class="lbl">servos.py (MicroPython)<button class="copy">Copiar</button></div><pre><span class="k">from</span> machine <span class="k">import</span> Pin, PWM
+<span class="k">import</span> time
+
+<span class="k">def</span> servo(pin):
+    p = PWM(Pin(pin)); p.freq(50); <span class="k">return</span> p
+
+<span class="k">def</span> angle(p, deg):
+    <span class="c"># SG90: ~0.5 ms = 0°, ~2.5 ms = 180°. Ajusta si tu servo zumba en los extremos.</span>
+    p.duty_ns(int(500_000 + deg / 180 * 2_000_000))
+
+pan, tilt = servo(16), servo(17)
+angle(pan, 90); angle(tilt, 90)     <span class="c"># centro: ahora atornilla los brazos</span>
+time.sleep(1)
+<span class="k">for</span> d <span class="k">in</span> (60, 120, 90):                <span class="c"># barrido corto, un servo a la vez</span>
+    angle(pan, d); time.sleep(0.5)</pre></div>
+  <p><b>Esperado:</b> los dos servos van al centro y el PAN gira ±30°. Si la Pico se reinicia al moverlos, revisa el 470 µF o usa una
+  fuente aparte de 5 V con la GND unida.</p>
+
+  <h3>P3 · Nivel de reposo del ADC</h3>
+  <div class="code"><div class="lbl">adc_idle.py (MicroPython)<button class="copy">Copiar</button></div><pre><span class="k">from</span> machine <span class="k">import</span> ADC, Pin
+Pin(23, Pin.OUT, value=1)           <span class="c"># fuente de la Pico en modo PWM: menos rizado en el ADC</span>
+adc = ADC(26)
+xs = [adc.read_u16() <span class="k">for</span> _ <span class="k">in</span> range(2000)]
+m = sum(xs) / len(xs)
+print(<span class="k">"media"</span>, m, <span class="k">"≈"</span>, round(m / 65535 * 3.3, 3), <span class="k">"V"</span>, <span class="k">"min"</span>, min(xs), <span class="k">"max"</span>, max(xs))</pre></div>
+  <p><b>Esperado:</b> media ≈ 32 768 (≈ 1.65 V), con poca dispersión. Si toca 0 o 65 535 hay un problema en el amplificador.</p>
+
+  <h3>P4 · Disparo y eco crudo</h3>
+  <div class="code"><div class="lbl">ping_crudo.py (MicroPython)<button class="copy">Copiar</button></div><pre><span class="k">from</span> machine <span class="k">import</span> ADC, Pin
+<span class="k">import</span> time, array
+
+Pin(23, Pin.OUT, value=1)
+trig, adc = Pin(15, Pin.OUT, value=0), ADC(26)
+N = 3000
+buf = array.array(<span class="k">"H"</span>, bytes(2 * N))
+
+trig.value(1); time.sleep_us(10); trig.value(0)
+t0 = time.ticks_us()
+<span class="k">for</span> i <span class="k">in</span> range(N):
+    buf[i] = adc.read_u16()
+dt = time.ticks_diff(time.ticks_us(), t0)
+fs = N / dt * 1e6
+print(<span class="k">"fs efectiva ≈"</span>, int(fs), <span class="k">"Hz"</span>)
+peak = max(range(N), key=<span class="k">lambda</span> i: abs(buf[i] - 32768))
+print(<span class="k">"pico en muestra"</span>, peak, <span class="k">"→"</span>, round(peak / fs * 1e3, 2), <span class="k">"ms"</span>)</pre></div>
+  <p><b>Esperado:</b> con la mano a ~20 cm, algo de actividad por encima del reposo. A esta fs baja (que sub-muestrea los 40 kHz)
+  la forma de onda <em>no</em> es fiable, pero confirma que el emisor dispara, que el receptor capta y que el amplificador responde.
+  El HC-SR04 tarda unos cientos de µs en emitir después del TRIG; la diafonía directa TX→RX marca ese instante.</p>
+
+  <h3>Tabla de aceptación</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Prueba</th><th>Pasa si…</th><th>Si falla</th></tr>
+    <tr><td>P1 Pico</td><td>Aparece el puerto COM y responde el REPL</td><td>Cable sólo de carga; reinstala el .uf2</td></tr>
+    <tr><td>P2 Servos</td><td>Centran y barren sin reiniciar la Pico</td><td>470 µF, fuente aparte, un servo a la vez</td></tr>
+    <tr><td>P3 ADC</td><td>Media ≈ 32 768 (1.65 V)</td><td>Divisor, orientación del chip, alimentación a 3.3 V</td></tr>
+    <tr><td>P4 Eco</td><td>Actividad tras el disparo que cambia al mover la mano</td><td>TRIG en GP15, VCC a 5 V, polaridad del receptor, cables trenzados</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================================================ ARQUITECTURA -->
+<section id="arquitectura">
+  <div class="eyebrow">Software · <span class="pl">propuesta</span></div>
+  <h2>Arquitectura propuesta</h2>
+  <p>La fase 1 se diseñó con puertos y adaptadores justamente para esto: el procesamiento de señal no sabe de dónde viene la
+  grabación. La fase 2 agrega un dispositivo nuevo, un posicionador y el escaneo 3D, y reutiliza el pipeline.</p>
+  <div class="diagram arch">
+    <div class="layer">Interfaz</div>
+    <div class="row"><div class="box"><b>cli.py</b><span>nuevos comandos: <code>sonar pico info</code>, <code>sonar pico ping</code>, <code>sonar scan3d</code></span></div></div>
+    <div class="layer">Aplicación</div>
+    <div class="row" style="grid-template-columns:1fr 1fr"><div class="box"><b>scan3d.py</b><span>recorre la grilla, convierte (r, pan, tilt) → (x, y, z), exporta .ply</span></div><div class="box"><b>viz3d.py</b><span>nube de puntos estilo radar, verde sobre negro</span></div></div>
+    <div class="layer">Dominio (reutilizado de la fase 1)</div>
+    <div class="row g3 grid"><div class="box"><b>processing.py</b><span>pasa-banda 35–45 kHz, filtro adaptado, promedio, fondo</span></div><div class="box"><b>detection.py</b><span>OS-CFAR + lóbulos</span></div><div class="box"><b>config.py</b><span>preset 40 kHz</span></div></div>
+    <div class="layer">Puertos</div>
+    <div class="row" style="grid-template-columns:1fr 1fr"><div class="box port"><b>PulseEchoDevice</b><span>capture(n_pings) → frames sincronizados con el disparo</span></div><div class="box port"><b>Positioner</b><span>move(pan, tilt) · home()</span></div></div>
+    <div class="layer">Adaptadores</div>
+    <div class="row" style="grid-template-columns:1fr 1fr"><div class="box"><b>PicoSonar</b><span>pyserial · implementa los dos puertos sobre el mismo USB</span></div><div class="box"><b>FakePulseEcho + FakePositioner</b><span>simulador 3D con haz direccional para los tests</span></div></div>
+  </div>
+  <h3>Archivos nuevos previstos</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Archivo</th><th>Contenido</th></tr>
+    <tr><td><code>firmware/pico_sonar/</code></td><td>Firmware de captura: disparo, ADC por DMA a 500 kS/s, servos por PWM, protocolo USB</td></tr>
+    <tr><td><code>src/sonar/pico.py</code></td><td>Adaptador serial <code>PicoSonar</code> (nueva dependencia: <code>pyserial</code>)</td></tr>
+    <tr><td><code>src/sonar/positioner.py</code></td><td>Puerto <code>Positioner</code> + fake</td></tr>
+    <tr><td><code>src/sonar/simulation3d.py</code></td><td>Cuarto sintético (planos, esquinas, objetos) y patrón de haz</td></tr>
+    <tr><td><code>src/sonar/scan3d.py</code></td><td><code>ScanGrid</code>, <code>PointCloud</code>, <code>to_cartesian</code>, <code>export_ply</code></td></tr>
+    <tr><td><code>src/sonar/viz3d.py</code></td><td>Vista 3D y vista "radar"</td></tr>
+    <tr><td><code>tests/test_scan3d.py</code> …</td><td>Pared plana → puntos coplanares; esquina; .ply válido; protocolo contra un puerto serie falso</td></tr>
+  </table></div>
+  <div class="callout"><b class="t">Por qué un puerto nuevo y no <code>AudioDevice</code></b>
+  <p><code>AudioDevice.playrec(signal)</code> supone que nosotros generamos la forma de onda. Con el HC-SR04, la ráfaga la genera su
+  propio microcontrolador al recibir TRIG. Además, como la Pico dispara y muestrea con el mismo reloj, los frames llegan ya alineados:
+  se acaban la latencia desconocida y los buffers perdidos de Windows.</p></div>
+</section>
+
+<!-- ============================================================ PROTOCOLO -->
+<section id="protocolo">
+  <div class="eyebrow">Software · <span class="pl">propuesta</span></div>
+  <h2>Protocolo Pico ↔ PC</h2>
+  <p>Comandos de texto por línea sobre el USB serie (CDC), y respuestas binarias para los datos. Simple de depurar con cualquier terminal.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Comando</th><th>Respuesta</th><th>Notas</th></tr>
+    <tr><td><code>INFO</code></td><td><code>SONAR-PICO 0.1 fs=500000 n=12000</code></td><td>Versión, tasa de muestreo y muestras por ping</td></tr>
+    <tr><td><code>SERVO &lt;pan&gt; &lt;tilt&gt;</code></td><td><code>OK</code></td><td>Grados; la Pico espera a que el servo asiente antes de responder</td></tr>
+    <tr><td><code>PING &lt;n&gt;</code></td><td><code>DATA &lt;muestras&gt; &lt;n&gt;</code> + muestras × int32 LE</td><td>Suma de n capturas alineadas al disparo; el PC divide entre n</td></tr>
+    <tr><td><code>RAW</code></td><td><code>DATA &lt;muestras&gt; 1</code> + muestras × uint16 LE</td><td>Una captura sin promediar, para depurar</td></tr>
+  </table></div>
+  <p>Presupuesto: 12 000 muestras (24 ms ≈ 4 m de alcance) × 4 bytes = 48 kB por dirección. La RAM de la Pico (264 kB) alcanza
+  sobrado, y el USB full-speed lo envía en una fracción de segundo.</p>
+  <h4>Por qué C para el firmware de captura</h4>
+  <p>Recomendación: MicroPython para las pruebas de encendido (iterar rápido) y <strong>C con el Pico SDK</strong> (o el core
+  arduino-pico) para la captura, donde el ADC por DMA a 500 kS/s y el PWM de los servos funcionan de forma determinista. La
+  decisión queda abierta para F5.</p>
+</section>
+
+<!-- ============================================================ PROCESAMIENTO -->
+<section id="procesamiento">
+  <div class="eyebrow">Software</div>
+  <h2>Procesamiento a 40 kHz</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Etapa</th><th>Fase 1 (laptop)</th><th>Fase 2 (Pico)</th></tr>
+    <tr><td>Forma de onda</td><td>Chirp 2–8 kHz que generamos nosotros</td><td>Ráfaga fija de 8 ciclos de 40 kHz (la genera el HC-SR04)</td></tr>
+    <tr><td>Plantilla del filtro adaptado</td><td>El chirp emitido</td><td><strong>Medida</strong>: la diafonía directa TX→RX promediada en la calibración</td></tr>
+    <tr><td>Pasa-banda</td><td>Banda del chirp</td><td>~35–45 kHz</td></tr>
+    <tr><td>t₀</td><td>Camino directo (cancela la latencia)</td><td>Igual, por consistencia (aquí la latencia ya es fija)</td></tr>
+    <tr><td>Alineación entre pings</td><td>Imprescindible (buffers perdidos)</td><td>Se mantiene como red de seguridad</td></tr>
+    <tr><td>Fondo</td><td>Escena estática</td><td>Diafonía TX→RX + soporte; se calibra apuntando a espacio libre</td></tr>
+    <tr><td>Detección</td><td colspan="2">La misma: umbral global + OS-CFAR + rechazo de lóbulos laterales</td></tr>
+  </table></div>
+  <h4>Preset previsto</h4>
+  <div class="code"><div class="lbl">config (<span class="pl" style="text-transform:none">propuesta</span>)</div><pre>fs = 500_000           <span class="c"># ADC del RP2040</span>
+f_start, f_end = 35_000, 45_000
+ping_interval = 0.030   <span class="c"># ~5 m de alcance sin solapar la reverberación</span>
+max_range = 4.0
+min_range = 0.05        <span class="c"># zona ciega por diafonía; se ajusta midiendo</span></pre></div>
+  <p><b>Resolución esperada:</b> la ráfaga dura 200 µs y el transductor es de banda estrecha (resuena varios ciclos más), así que dos
+  objetos se separarán a partir de unos 5–10 cm. La precisión de un eco aislado debería ser mucho mejor gracias a la interpolación
+  del pico. Ambas cifras son estimaciones y se miden en F10.</p>
+</section>
+
+<!-- ============================================================ ROADMAP -->
+<section id="roadmap">
+  <div class="eyebrow">Terminar</div>
+  <h2>Hoja de ruta</h2>
+  <p class="lead">Cada fase tiene una meta y criterios de "terminado" verificables. Las fases ya cumplidas vienen marcadas.</p>
+  <div id="phases"></div>
+</section>
+
+<!-- ============================================================ ESPERAR -->
+<section id="esperar">
+  <div class="eyebrow">Terminar</div>
+  <h2>Qué esperar del resultado</h2>
+  <div class="grid g2">
+    <div class="card"><h4>✔ Sí</h4><p>Un mapa 3D grueso del cuarto: paredes, esquinas, muebles grandes y puertas, en bloques del tamaño
+    del haz. Una vista tipo radar que se va llenando mientras escanea. Un archivo .ply que se abre en MeshLab o CloudCompare.</p></div>
+    <div class="card"><h4>✘ No</h4><p>Una foto ni detalles finos. Ver a través de paredes. Tiempo real a 30 fps: un escaneo completo
+    toma ~2 minutos. Objetos blandos o muy pequeños lejos.</p></div>
+  </div>
+  <div class="callout"><b class="t">Las superficies lisas son espejos</b>
+  <p>A 40 kHz una pared lisa refleja casi todo el sonido como un espejo. Sólo devuelve eco cuando el haz le pega casi de frente; en ángulo,
+  el sonido se va hacia otro lado. Por eso la nube saldrá dispersa en las paredes y más densa en esquinas, bordes y objetos irregulares.
+  Los murciélagos tienen el mismo problema.</p></div>
+</section>
+
+<!-- ============================================================ RIESGOS -->
+<section id="riesgos">
+  <div class="eyebrow">Terminar</div>
+  <h2>Riesgos técnicos y mitigaciones</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Riesgo</th><th>Efecto</th><th>Mitigación</th></tr>
+    <tr><td>Servos alimentados del USB (picos de ~0.5 A o más)</td><td>La Pico se reinicia</td><td>470 µF, mover un servo a la vez; si no basta, fuente de 5 V 2 A con GND común</td></tr>
+    <tr><td>TRIG a 3.3 V en un HC-SR04 de 5 V</td><td>Puede no disparar en algunos clones</td><td>Suele funcionar (umbral TTL); si no, un transistor o un conversor de nivel</td></tr>
+    <tr><td>Ráfaga fija de 8 ciclos (no chirp)</td><td>Menos resolución que con un chirp</td><td>Plantilla medida; a futuro, excitar el transductor desde la Pico (PIO), aunque el transductor es de banda estrecha</td></tr>
+    <tr><td>Ancho de banda del MCP6002 (1 MHz)</td><td>Ganancia ≈ ×170 en vez de ×253</td><td>Suficiente en principio; tercera etapa con el MCP6002 de repuesto</td></tr>
+    <tr><td>Diafonía TX→RX en el mismo cabezal</td><td>Satura los primeros centímetros</td><td>Separar 2–3 cm, una barrera de espuma, resta de fondo</td></tr>
+    <tr><td>Ruido digital en el ADC</td><td>Piso de ruido alto (el ADC del RP2040 tiene ~9 bits efectivos)</td><td>AGND, GP23 en alto, cables trenzados, promediar pings</td></tr>
+    <tr><td>Reflexión especular</td><td>Nube dispersa en paredes lisas</td><td>Pasos finos de ángulo, varias pasadas, acumular la nube</td></tr>
+    <tr><td>Precisión mecánica del SG90</td><td>Error de unos pocos grados al apuntar</td><td>Acercarse a cada posición siempre desde el mismo lado; calibrar los ángulos</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================================================ BITÁCORA -->
+<section id="bitacora">
+  <div class="eyebrow">Terminar</div>
+  <h2>Bitácora</h2>
+  <p>Registro de decisiones y resultados. Agrega una entrada cada vez que algo funcione, falle o cambie el diseño.</p>
+  <div class="timeline">
+    <div class="tl ok"><div class="when">28-OCT-2026</div><h4>La fase 1 llega a su límite</h4>
+      <p>El sonar de la laptop mide 0.26 m con un objeto a 30 cm, pero el primer metro queda tapado por la resonancia del parlante y el
+      chasis, y no hay dirección. Conclusión: para una imagen 3D hace falta un haz direccional.</p></div>
+    <div class="tl warn"><div class="when">28-OCT-2026</div><h4>Primera propuesta: interfaz USB de 192 kHz + TCT40</h4>
+      <p>Descartada por disponibilidad en la tienda local y por costo (100–170 USD).</p></div>
+    <div class="tl ok"><div class="when">28-OCT-2026</div><h4>Rediseño con Raspberry Pi Pico</h4>
+      <p>Una placa emite (vía HC-SR04), graba a 500 kS/s y mueve los servos. Lista de compras: ~97.000 COP.</p></div>
+    <div class="tl ok"><div class="when">29-OCT-2026</div><h4>Piezas compradas</h4></div>
+    <div class="tl ok"><div class="when">29-OCT-2026</div><h4>Plano del dispositivo</h4>
+      <p>Pines de la Pico, amplificador de dos etapas con valores del kit de resistencias, orden de armado y tres errores críticos. Se dejó
+      lista la especificación para generar una imagen del circuito (pendiente).</p></div>
+    <div class="tl"><div class="when">29-OCT-2026</div><h4>Documentación de la fase 2</h4><p>Esta página.</p></div>
+    <div class="tl warn"><div class="when">29-OCT-2026</div><h4>Inicio del armado: falta el MCP6002</h4>
+      <p>Pan-tilt armado con el HC-SR04 emisor arriba y la Pico en la protoboard. El MCP6002 no llegó con la compra; se pide de nuevo.
+      Se decidió usar el potenciómetro como ganancia ajustable de la etapa 2 (en lugar del 10 kΩ entre los pines 7 y 6).</p></div>
+    <div class="tl"><div class="when">PRÓXIMO</div><h4>Llega el MCP6002 → amplificador y pruebas P3–P4</h4>
+      <p>Mientras tanto: P1, P2 (servos con el 470 µF) y desoldar el receptor.</p></div>
+  </div>
+  <details><summary>Plantilla para nuevas entradas</summary>
+  <div class="code"><div class="lbl">HTML<button class="copy">Copiar</button></div><pre>&lt;div class="tl ok"&gt;&lt;div class="when"&gt;DD-MMM-AAAA&lt;/div&gt;&lt;h4&gt;Título&lt;/h4&gt;
+  &lt;p&gt;Qué se probó, qué se esperaba, qué pasó, qué se cambió.&lt;/p&gt;&lt;/div&gt;
+&lt;!-- clases: ok = funcionó · warn = parcial · bad = falló --&gt;</pre></div></details>
+</section>
+
+<!-- ============================================================ SEGURIDAD -->
+<section id="seguridad">
+  <div class="eyebrow">Terminar</div>
+  <h2>Seguridad</h2>
+  <div class="callout warn"><b class="t">Mascotas</b><p>Los humanos no oyen 40 kHz, pero <strong>los perros (hasta ~45 kHz) y los
+  gatos (hasta ~64 kHz) sí</strong>. Haz sesiones cortas y no escanees con mascotas en el cuarto.</p></div>
+  <div class="callout"><b class="t">Eléctrica</b><p>Todo funciona a 5 V del USB: no hay riesgo para personas. El riesgo es para las
+  piezas: ver los tres errores críticos del <a href="#armado">armado</a>. Desconecta el USB antes de cambiar cables.</p></div>
+  <div class="callout"><b class="t">Privacidad</b><p>Escanea tu propio espacio. Un mapa 3D de un cuarto revela su distribución; no lo
+  compartas sin permiso de quien vive ahí.</p></div>
+</section>
+
+<footer>
+  Batman Sonar · fase 2 · documento vivo, actualizado el 29 de octubre de 2026. Lo marcado como <span class="pl">propuesta</span> aún no está implementado.
+  <a href="index.html">Documentación de la fase 1 →</a>
+</footer>
+
+</div>
+</main>
+</div>
+
+<script>
+(function(){
+  var store = {
+    get:function(k){try{return localStorage.getItem(k)}catch(e){return null}},
+    set:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  };
+  function load(k){try{return JSON.parse(store.get(k)||'{}')}catch(e){return {}}}
+
+  // Theme (shared key with phase 1)
+  var root = document.documentElement, themeLbl = document.getElementById('themeLbl');
+  function applyTheme(t){
+    if(t){root.setAttribute('data-theme',t)}else{root.removeAttribute('data-theme')}
+    themeLbl.textContent = t==='dark'?'Oscuro':t==='light'?'Claro':'Auto';
+  }
+  applyTheme(store.get('sonar-theme'));
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    var cur = root.getAttribute('data-theme');
+    var next = cur===null?'dark':cur==='dark'?'light':null;
+    applyTheme(next); store.set('sonar-theme', next||'');
+  });
+  document.getElementById('menuBtn').addEventListener('click',function(){document.body.classList.toggle('nav-open')});
+  document.querySelectorAll('.sidebar a').forEach(function(a){a.addEventListener('click',function(){document.body.classList.remove('nav-open')})});
+
+  // Roadmap data: done:true = already completed (fixed), otherwise tracked per viewer.
+  var PHASES = [
+    {id:'F0', t:'Sonar acústico con la laptop', goal:'Medir distancias con parlante y micrófono integrados.', tasks:[
+      ['Pipeline completo + 88 tests sin hardware',1],['Funciona en hardware real (WASAPI exclusivo, 2–8 kHz)',1],['Objeto a 30 cm medido a 0.26 m de forma repetible',1],['Documentación de la fase 1',1]]},
+    {id:'F1', t:'Diseño y compra', goal:'Elegir una arquitectura direccional barata y conseguir las piezas.', tasks:[
+      ['Decisión: haz de 40 kHz + pan-tilt',1],['Rediseño con Raspberry Pi Pico',1],['Lista de compras (~97.000 COP)',1],['Piezas compradas',1]]},
+    {id:'F2', t:'Plano del circuito', goal:'Conexiones exactas con las piezas compradas.', tasks:[
+      ['Pines de la Pico, HC-SR04 y servos',1],['Esquemático del amplificador con valores del kit',1],['Orden de armado y errores críticos',1],['Imagen del circuito para el repositorio',0]]},
+    {id:'F3', t:'Armado', goal:'Circuito montado en la protoboard y cabezal en el pan-tilt.', tasks:[
+      ['Pico y rieles de alimentación',0],['Amplificador: 1.65 V medidos en el pin 7',0],['Receptor desoldado, cables trenzados y conectado',0],['HC-SR04 #1 conectado (ECHO al aire)',0],['Servos + 470 µF',0],['Montaje mecánico con servos centrados',0],['Fotos del montaje para la documentación',0]]},
+    {id:'F4', t:'Pruebas de encendido', goal:'Cada parte verificada por separado.', tasks:[
+      ['P1: la Pico responde (MicroPython)',0],['P2: servos centran y barren sin reiniciar',0],['P3: ADC en reposo ≈ 32 768',0],['P4: actividad tras el disparo que cambia con la mano',0]]},
+    {id:'F5', t:'Firmware de captura', goal:'Capturas sincronizadas al disparo a 500 kS/s, servidas por USB.', tasks:[
+      ['Decidir C (Pico SDK / arduino-pico) o MicroPython + DMA',0],['ADC por DMA a 500 kS/s (verificar: la ráfaga de 40 kHz dura 12.5 muestras por ciclo)',0],['Servos por PWM con espera de asentamiento',0],['Protocolo INFO / SERVO / PING / RAW',0],['Promediado de N pings en la Pico',0]]},
+    {id:'F6', t:'Adaptadores en el PC', goal:'El software habla con la Pico y tiene dobles para tests.', tasks:[
+      ['Puertos PulseEchoDevice y Positioner',0],['Adaptador PicoSonar con pyserial',0],['Fakes + tests del protocolo (sin hardware)',0],['Comando sonar pico info',0]]},
+    {id:'F7', t:'Sonar 1D a 40 kHz', goal:'A-scan con la Pico, como la fase 1 pero direccional.', tasks:[
+      ['Preset de 40 kHz en SonarConfig',0],['Plantilla medida desde la diafonía directa',0],['Calibración de fondo apuntando a espacio libre',0],['Comando sonar pico ping con A-scan',0],['Pared a 1 m medida con error ≤ 2 cm frente a la cinta',0]]},
+    {id:'F8', t:'Escaneo 3D', goal:'Recorrer la grilla y producir una nube de puntos.', tasks:[
+      ['Simulador 3D con haz direccional',0],['ScanGrid + conversión esférica → cartesiana',0],['Tests: pared plana → puntos coplanares; esquina',0],['Comando sonar scan3d',0],['Exportar .ply y abrirlo en MeshLab o CloudCompare',0]]},
+    {id:'F9', t:'Vista estilo Batman', goal:'Ver el cuarto en pantalla mientras se escanea.', tasks:[
+      ['Nube 3D verde sobre negro, color = SNR',0],['Actualización en vivo durante el escaneo',0],['Captura o video para el README',0]]},
+    {id:'F10', t:'Validación', goal:'Saber cuánto se puede confiar en el mapa.', tasks:[
+      ['Medidas del cuarto con cinta vs. la nube',0],['Resolución angular: dos postes separados',0],['Resolución en distancia: dos objetos alineados',0],['Publicar los resultados reales (buenos y malos)',0]]},
+    {id:'F11', t:'Open source', goal:'Que cualquiera pueda replicarlo.', tasks:[
+      ['Repositorio git + LICENSE',0],['Firmware compilado (.uf2) en releases',0],['Esta guía actualizada con fotos y resultados',0],['CI con los tests',0]]}
+  ];
+  var state = load('sonar-hw-tasks');
+  var phasesEl = document.getElementById('phases'), board = document.getElementById('board');
+  PHASES.forEach(function(p){
+    var html = '<article class="phase" id="ph-'+p.id+'"><header><span class="pid">'+p.id+'</span><h3>'+p.t+'</h3><span class="tag" data-tag></span></header>'+
+      '<p class="goal">'+p.goal+'</p><div class="pbar"><i></i></div><ul class="todo">';
+    p.tasks.forEach(function(t,i){
+      var key = p.id+'.'+i, fixed = t[1]===1;
+      html += '<li><label><input type="checkbox" data-key="'+key+'"'+(fixed?' checked disabled':'')+'><span>'+t[0]+'</span></label></li>';
+    });
+    phasesEl.insertAdjacentHTML('beforeend', html+'</ul></article>');
+    board.insertAdjacentHTML('beforeend','<a href="#ph-'+p.id+'" data-b="'+p.id+'"><b>'+p.id+'</b>'+p.t+'<div class="m"><i></i></div></a>');
+  });
+  function renderPhases(){
+    var all=0, done=0, phasesDone=0;
+    PHASES.forEach(function(p){
+      var el = document.getElementById('ph-'+p.id), boxes = el.querySelectorAll('input'), n=0;
+      boxes.forEach(function(b){ if(!b.disabled) b.checked = !!state[b.dataset.key]; if(b.checked) n++; b.closest('li').classList.toggle('is-done', b.checked); });
+      var pct = Math.round(100*n/boxes.length), finished = n===boxes.length;
+      el.querySelector('.pbar i').style.width = pct+'%';
+      el.classList.toggle('done', finished);
+      var tag = el.querySelector('[data-tag]');
+      tag.className = 'tag '+(finished?'ok':n?'warn':'info');
+      tag.textContent = finished?'terminada':n?'en curso · '+n+'/'+boxes.length:'pendiente';
+      var b = board.querySelector('[data-b="'+p.id+'"]');
+      b.classList.toggle('done', finished); b.querySelector('.m i').style.width = pct+'%';
+      all += boxes.length; done += n; if(finished) phasesDone++;
+    });
+    var pct = Math.round(100*done/all);
+    document.getElementById('ring').style.setProperty('--p', pct);
+    document.getElementById('ringTxt').textContent = pct+'%';
+    document.getElementById('overallTxt').textContent = done+' de '+all+' tareas · '+phasesDone+' de '+PHASES.length+' fases terminadas';
+  }
+  phasesEl.addEventListener('change',function(e){
+    var k = e.target.dataset.key; if(!k) return;
+    state[k] = e.target.checked; store.set('sonar-hw-tasks', JSON.stringify(state)); renderPhases();
+  });
+  renderPhases();
+
+  // Assembly steps
+  var steps = load('sonar-hw-steps');
+  document.querySelectorAll('.step').forEach(function(s){
+    var cb = s.querySelector('input');
+    function paint(){ cb.checked = !!steps[s.dataset.step]; s.classList.toggle('done', cb.checked); }
+    cb.addEventListener('change',function(){ steps[s.dataset.step]=cb.checked; store.set('sonar-hw-steps',JSON.stringify(steps)); paint(); });
+    paint();
+  });
+
+  // BOM
+  var bom = load('sonar-hw-bom'), bomBoxes = document.querySelectorAll('#bom input');
+  function paintBom(){
+    var n=0; bomBoxes.forEach(function(b){ b.checked=!!bom[b.dataset.bom]; b.closest('tr').classList.toggle('got',b.checked); if(b.checked)n++; });
+    document.getElementById('bomTxt').textContent = 'En la mesa: '+n+' de '+bomBoxes.length+'.';
+  }
+  bomBoxes.forEach(function(b){ b.addEventListener('change',function(){ bom[b.dataset.bom]=b.checked; store.set('sonar-hw-bom',JSON.stringify(bom)); paintBom(); }); });
+  paintBom();
+
+  // Copy buttons
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var text = btn.closest('.code').querySelector('pre').innerText;
+      var done = function(){btn.textContent='Copiado ✓';setTimeout(function(){btn.textContent='Copiar'},1400)};
+      function fallback(){var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');done()}catch(e){}t.remove()}
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fallback)}else{fallback()}
+    });
+  });
+
+  // Scrollspy + reading progress
+  var links = {}; document.querySelectorAll('.sidebar a').forEach(function(a){links[a.getAttribute('href').slice(1)]=a});
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  var bar = document.getElementById('readProgress');
+  function onScroll(){
+    var y = window.scrollY + 90, current = sections[0].id;
+    sections.forEach(function(s){if(s.offsetTop<=y)current=s.id});
+    Object.keys(links).forEach(function(k){links[k].classList.toggle('active',k===current)});
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (h>0?100*window.scrollY/h:0)+'%';
+  }
+  window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+})();
+</script>
+</body>
+</html>

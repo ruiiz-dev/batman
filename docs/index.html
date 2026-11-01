@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batman Sonar Docs</title>
+<meta name="description" content="Sonar acústico activo con el parlante y el micrófono de un computador: tutorial paso a paso, teoría, arquitectura, bitácora de pruebas reales y referencia completa.">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="iconbtn" id="menuBtn" aria-label="Abrir índice">☰</button>
+  <a class="brand" href="#inicio">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.5"/><circle cx="16" cy="16" r="4" fill="#d9a520"/><path d="M16 16 L29 9" stroke="#d9a520" stroke-width="2" stroke-linecap="round"/></svg>
+    Batman Sonar <small>documentación</small>
+  </a>
+  <span class="spacer"></span>
+  <button class="iconbtn" id="themeBtn" aria-label="Cambiar tema">◐ <span id="themeLbl">Tema</span></button>
+  <div class="progress" id="readProgress"></div>
+</header>
+
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Índice">
+  <div class="group">Empezar</div>
+  <a href="#inicio">Inicio</a>
+  <a href="#resumen">Qué es y qué logra</a>
+  <a href="#requisitos">Requisitos</a>
+  <div class="group">Tutorial</div>
+  <a href="#tutorial">Paso a paso</a>
+  <a href="#lectura">Cómo leer un A-scan</a>
+  <div class="group">Entender</div>
+  <a href="#fisica">Física del sonar</a>
+  <a href="#calculadora">Calculadora</a>
+  <a href="#pipeline">Pipeline de señal</a>
+  <a href="#arquitectura">Arquitectura del código</a>
+  <div class="group">Historia</div>
+  <a href="#bitacora">Bitácora del proyecto</a>
+  <a href="#resultados">Resultados reales</a>
+  <div class="group">Referencia</div>
+  <a href="#cli">CLI</a>
+  <a href="#config">SonarConfig</a>
+  <a href="#errores">Errores</a>
+  <a href="#tests">Tests</a>
+  <a href="#problemas">Solución de problemas</a>
+  <div class="group">Comunidad</div>
+  <a href="#limitaciones">Limitaciones y roadmap</a>
+  <a href="#contribuir">Contribuir</a>
+  <a href="#glosario">Glosario</a>
+  <div class="group">Fase 2</div>
+  <a href="hardware.html">Sonar 3D con hardware →</a>
+</nav>
+
+<main>
+<div class="content">
+
+<!-- ================================================================ HERO -->
+<section id="inicio" class="hero">
+  <div class="eyebrow">Proyecto open source · Prueba de concepto</div>
+  <h1>Un sonar real con el <span>parlante y el micrófono</span> de tu laptop</h1>
+  <p class="lead">Inspirado en el sonar de <em>The Dark Knight</em>, pero honesto sobre sus límites. Emite chirps por el
+  parlante, graba los ecos con el micrófono integrado y mide la distancia a las superficies por tiempo de vuelo,
+  con filtro adaptado, promediado coherente y detección CFAR. Esta guía documenta <strong>todo</strong>: la teoría,
+  cómo instalarlo, cada decisión de diseño, los fallos que encontramos en hardware real y cómo los resolvimos,
+  para que cualquiera pueda replicarlo.</p>
+  <div class="badges">
+    <span class="badge">Python <b>≥ 3.11</b></span>
+    <span class="badge ok">tests <b>88/88</b> ✓</span>
+    <span class="badge">numpy · scipy · sounddevice</span>
+    <span class="badge">sin hardware extra</span>
+    <span class="badge">CLI <b>sonar</b></span>
+  </div>
+  <div class="grid g4" style="margin-top:20px">
+    <div class="stat"><div class="v">~2.9 cm</div><div class="l">resolución teórica en la banda 2–8 kHz</div></div>
+    <div class="stat"><div class="v">&lt; 2 cm</div><div class="l">error en simulación (test de propiedades)</div></div>
+    <div class="stat"><div class="v">0.26 m</div><div class="l">objeto real a 30 cm, medido de forma repetible</div></div>
+    <div class="stat"><div class="v">+18 dB</div><div class="l">ganancia del promediado con 64 pings</div></div>
+  </div>
+</section>
+
+<!-- ================================================================ RESUMEN -->
+<section id="resumen">
+  <div class="eyebrow">Visión general</div>
+  <h2>Qué es y qué logra</h2>
+  <p>Un murciélago grita y escucha. Este proyecto hace lo mismo con piezas que ya tienes: el parlante emite un
+  <strong>chirp</strong> (un barrido de frecuencia corto), el sonido rebota en una pared o un objeto, y el micrófono
+  graba el eco. Como el sonido viaja a ~343 m/s, cada milisegundo de retraso equivale a ~17 cm de distancia (ida y vuelta).</p>
+  <div class="grid g3">
+    <div class="card"><h4>📡 Mide distancias</h4><p>Lista de ecos con distancia, retardo y SNR. Salida en tabla o JSON.</p></div>
+    <div class="card"><h4>📈 Visualiza</h4><p>A-scan (perfil de eco), modo en vivo con <em>waterfall</em> y radar polar girando el equipo a mano.</p></div>
+    <div class="card"><h4>🩺 Se autodiagnostica</h4><p>Mide la respuesta en frecuencia de tu hardware y recomienda la banda que sí funciona.</p></div>
+    <div class="card"><h4>🧪 Probado sin hardware</h4><p>Un simulador acústico permite correr 88 tests con latencia aleatoria, ruido, clipping y fallos de buffer.</p></div>
+    <div class="card"><h4>🛡️ Seguro por diseño</h4><p>Tope de amplitud que el adaptador de audio verifica antes de reproducir cualquier cosa.</p></div>
+    <div class="card"><h4>🧭 Errores accionables</h4><p>Cada fallo dice qué pasó <em>y cómo resolverlo</em>, con instrucciones por sistema operativo.</p></div>
+  </div>
+  <div class="callout warn">
+    <b class="t">⚠️ Seguridad</b>
+    <p>El casi-ultrasonido (18–22 kHz) a alto volumen <strong>molesta a perros y gatos</strong> y puede <strong>dañar los
+    tweeters</strong> de parlantes pequeños. La amplitud digital por defecto es baja (<code>0.1</code>) y hay un tope duro
+    (<code>--max-amplitude</code>, por defecto <code>0.5</code>). Mantén moderado el volumen del sistema. La banda audible
+    (2–8 kHz u 8–16 kHz) se oye como un "tic" agudo: es molesto, no peligroso.</p>
+  </div>
+  <div class="callout">
+    <b class="t">Lo que NO hace (todavía)</b>
+    <p>Con un solo micrófono sólo hay <strong>distancia</strong>, no dirección. No "ve a través de paredes" ni reconstruye
+    imágenes 3D como en la película. Ver <a href="#limitaciones">limitaciones</a>.</p>
+  </div>
+</section>
+
+<!-- ================================================================ REQUISITOS -->
+<section id="requisitos">
+  <div class="eyebrow">Antes de empezar</div>
+  <h2>Requisitos</h2>
+  <div class="grid g3">
+    <div class="card">
+      <h4>Hardware</h4>
+      <ul style="margin:.4rem 0 0;font-size:.93rem;color:var(--muted)">
+        <li>Laptop con parlante y micrófono integrados</li>
+        <li>Tapa <strong>abierta</strong> (cerrada apaga el mic)</li>
+        <li>Opcional: cinta métrica para validar</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Software</h4>
+      <ul style="margin:.4rem 0 0;font-size:.93rem;color:var(--muted)">
+        <li>Python ≥ 3.11</li>
+        <li><a href="https://docs.astral.sh/uv/">uv</a> (gestor de entornos)</li>
+        <li>Linux: <code>libportaudio2</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Ambiente</h4>
+      <ul style="margin:.4rem 0 0;font-size:.93rem;color:var(--muted)">
+        <li>Cuarto silencioso, sin ventilador ni A/C</li>
+        <li>Pared plana y dura a 0.5–2 m</li>
+        <li>Nada blando cerca (cortinas, sofás)</li>
+      </ul>
+    </div>
+  </div>
+  <h4>Versiones con las que se verificó esta documentación</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Componente</th><th>Versión</th><th>Rol</th></tr>
+    <tr><td>Python</td><td><code>3.12.10</code></td><td>Intérprete</td></tr>
+    <tr><td>numpy</td><td><code>2.5.4</code></td><td>Arrays, FFT</td></tr>
+    <tr><td>scipy</td><td><code>1.18.1</code></td><td>Filtros, correlación, Hilbert, Welch, CFAR</td></tr>
+    <tr><td>matplotlib</td><td><code>3.11.2</code></td><td>A-scan, live, radar polar</td></tr>
+    <tr><td>sounddevice</td><td><code>0.5.6</code></td><td>PortAudio: reproducir y grabar con el mismo reloj</td></tr>
+    <tr><td>typer (+ rich)</td><td><code>0.27.3</code></td><td>CLI y tablas en terminal</td></tr>
+    <tr><td>pytest · hypothesis</td><td>grupo <code>dev</code></td><td>Tests unitarios y de propiedades</td></tr>
+  </table></div>
+  <p style="font-size:.9rem;color:var(--muted)">Plataforma de pruebas reales: Windows 11 en una laptop ASUS ROG/TUF con audio Realtek y Armoury Crate.</p>
+</section>
+
+<!-- ================================================================ TUTORIAL -->
+<section id="tutorial">
+  <div class="eyebrow">Tutorial</div>
+  <h2>Paso a paso: de cero a tu primer eco</h2>
+  <p class="lead">Marca cada paso al terminarlo; tu progreso se guarda en este navegador.</p>
+  <div class="tprogress"><span id="tpText">0 de 12</span><div class="bar"><i id="tpBar"></i></div><button class="iconbtn" id="tpReset" style="height:30px;font-size:.8rem">Reiniciar</button></div>
+
+  <div class="steps">
+
+    <div class="step" data-step="1">
+      <div class="meta">≈ 2 min · una sola vez</div>
+      <h3>Instala uv y Python</h3>
+      <p>uv crea el entorno virtual e instala las dependencias exactas fijadas en <code>uv.lock</code>.</p>
+      <div class="code"><div class="lbl">Windows (PowerShell)<button class="copy">Copiar</button></div><pre>powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"</pre></div>
+      <div class="code"><div class="lbl">macOS / Linux<button class="copy">Copiar</button></div><pre>curl -LsSf https://astral.sh/uv/install.sh | sh
+<span class="c"># Sólo Linux: la librería nativa de audio</span>
+sudo apt install libportaudio2</pre></div>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="2">
+      <div class="meta">≈ 1 min</div>
+      <h3>Obtén el código e instala dependencias</h3>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>git clone https://github.com/ruiiz-dev/batman.git
+cd batman
+uv sync                 <span class="c"># crea .venv con dependencias + pytest/hypothesis</span>
+uv run sonar --help</pre></div>
+      <p>Deberías ver la ayuda con los comandos <code>devices</code>, <code>diagnose</code>, <code>calibrate</code>, <code>ping</code>, <code>live</code> y <code>sweep</code>.</p>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="3">
+      <div class="meta">≈ 15 s · sin hardware</div>
+      <h3>Corre los tests para confirmar que la cadena funciona</h3>
+      <p>Los tests no usan tu micrófono: alimentan el código real con un simulador acústico. Si pasan, cualquier fallo
+      posterior es del hardware o del sistema operativo, no del software.</p>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>uv run pytest
+<span class="c"># si pytest no puede escribir en la carpeta temporal del sistema:</span>
+uv run pytest --basetemp=.pytest_tmp</pre></div>
+      <div class="code"><div class="lbl">Salida esperada</div><pre>........................................................................ [ 81%]
+................                                                         [100%]
+<span class="k">88 passed</span> in 9.68s</pre></div>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="4">
+      <div class="meta">≈ 5 min · crítico en Windows</div>
+      <h3>Prepara el sistema operativo</h3>
+      <p>Todo el "procesamiento inteligente" de voz del sistema está diseñado para <strong>eliminar</strong> exactamente lo
+      que queremos medir: sonidos que salen del parlante y vuelven al micrófono.</p>
+      <ul>
+        <li><strong>Desactiva mejoras de audio</strong>: Configuración → Sistema → Sonido → (dispositivo) → Mejoras de audio: <em>Desactivado</em>. Haz lo mismo en el parlante.</li>
+        <li><strong>Apps de "cancelación de ruido con IA"</strong> (Armoury Crate, Nahimic, NVIDIA Broadcast, Krisp…): apágalas.</li>
+        <li><strong>Permiso de micrófono</strong>: Privacidad y seguridad → Micrófono → permitir apps de escritorio.</li>
+        <li>Cierra Zoom, Discord, Teams y pestañas del navegador que usen el micrófono.</li>
+        <li>Volumen del sistema moderado (~50 %).</li>
+      </ul>
+      <div class="callout bad">
+        <b class="t">Trampa real: Armoury Crate (ASUS)</b>
+        <p>"Cancelación de ruido con IA bidireccional" <strong>deshabilita el micrófono físico</strong> y deja sólo un
+        micrófono virtual. Al apagarla tuvimos que rehabilitarlo a mano: <span class="kbd">Win</span>+<span class="kbd">R</span> →
+        <code>mmsys.cpl</code> → Grabación → clic derecho → "Mostrar dispositivos deshabilitados" → Habilitar, y luego quitarle el <em>mute</em>.</p>
+      </div>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="5">
+      <div class="meta">≈ 1 min</div>
+      <h3>Identifica tus dispositivos</h3>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>uv run sonar devices</pre></div>
+      <p>Verás cada dispositivo <strong>una vez por host API</strong> (MME, DirectSound, WASAPI, WDM-KS en Windows), con
+      canales y tasas de muestreo soportadas. Busca el micrófono integrado y los parlantes integrados <strong>bajo WASAPI</strong>
+      y anota una parte única de su nombre.</p>
+      <div class="callout tip">
+        <b class="t">Elige por nombre, nunca por índice</b>
+        <p>Los índices cambian cuando conectas un monitor o audífonos. <code>--input "Varios micr" --host-api WASAPI</code>
+        es estable; <code>--input 14</code> no.</p>
+      </div>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="6">
+      <div class="meta">≈ 30 s · guarda silencio</div>
+      <h3>Diagnostica la respuesta de tu hardware</h3>
+      <p>Graba 2 s de ruido ambiente, reproduce un barrido de 1 kHz a ~23 kHz y calcula el SNR por frecuencia.
+      Te dice qué banda usar y te imprime el comando exacto.</p>
+      <div class="code"><div class="lbl">Windows (WASAPI exclusivo)<button class="copy">Copiar</button></div><pre>uv run sonar --host-api WASAPI --exclusive --input "Varios micr" --output "Altavoces (Realtek" diagnose --plot respuesta.png</pre></div>
+      <div class="code"><div class="lbl">macOS / Linux<button class="copy">Copiar</button></div><pre>uv run sonar diagnose --plot respuesta.png</pre></div>
+      <figure>
+        <img src="img/respuesta.png" alt="Respuesta parlante a micrófono: SNR alto bajo 9.5 kHz, cero sobre 10 kHz" loading="lazy">
+        <figcaption><strong>Resultado real (ASUS):</strong> el hardware responde hasta ~9.5 kHz y está muerto en la banda por defecto
+        18–22 kHz (sombreada). Por eso esta laptop usa 2–8 kHz.</figcaption>
+      </figure>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="7">
+      <div class="meta">≈ 2 min</div>
+      <h3>Monta la escena</h3>
+      <div class="diagram">
+        <svg viewBox="0 0 760 230" role="img" aria-label="Montaje: laptop en una mesa apuntando a una pared a 0.5–2 m">
+          <rect x="30" y="150" width="700" height="10" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="40" y="185" class="muted" font-size="13">mesa</text>
+          <rect x="70" y="128" width="110" height="22" rx="4" fill="var(--surface-2)" stroke="var(--muted)"/>
+          <path d="M70 128 L52 50" stroke="var(--muted)" stroke-width="5" stroke-linecap="round"/>
+          <text x="80" y="118" font-size="13">laptop</text>
+          <circle cx="175" cy="139" r="5" fill="#d9a520"/><text x="160" y="105" font-size="12" class="muted">parlante</text>
+          <circle cx="56" cy="62" r="4" fill="var(--info)"/><text x="64" y="58" font-size="12" class="muted">micrófono</text>
+          <rect x="640" y="20" width="22" height="130" fill="var(--surface-2)" stroke="var(--muted)"/>
+          <text x="600" y="14" font-size="13">pared dura</text>
+          <path d="M190 139 Q 420 90 636 100" fill="none" stroke="#d9a520" stroke-width="2" stroke-dasharray="6 5"/>
+          <path d="M636 108 Q 380 70 64 64" fill="none" stroke="var(--info)" stroke-width="2" stroke-dasharray="6 5"/>
+          <line x1="180" y1="205" x2="640" y2="205" stroke="var(--muted)" marker-start="url(#a1)" marker-end="url(#a2)"/>
+          <text x="340" y="222" font-size="13">0.5 – 2 m de espacio libre</text>
+          <defs>
+            <marker id="a1" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M8 0 L0 4 L8 8" fill="none" stroke="var(--muted)"/></marker>
+            <marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="var(--muted)"/></marker>
+          </defs>
+        </svg>
+      </div>
+      <ul>
+        <li>Nada entre el equipo y el objetivo. Superficies a menos de 15 cm caen en la <strong>zona ciega</strong>.</li>
+        <li>No muevas el equipo entre calibrar y medir.</li>
+        <li>Tú también eres un reflector: aléjate o quédate detrás del equipo.</li>
+      </ul>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="8">
+      <div class="meta">≈ 10 s · sin el objetivo delante</div>
+      <h3>Calibra el fondo</h3>
+      <p>Graba todo lo estático (el sonido que viaja por el chasis, el camino directo, la mesa, la tapa) para restarlo
+      después. Hazlo <strong>en la posición de medida, apuntando a espacio libre</strong>.</p>
+      <div class="code"><div class="lbl">Terminal (Windows, configuración verificada)<button class="copy">Copiar</button></div><pre>uv run sonar --host-api WASAPI --exclusive --input "Varios micr" --output "Altavoces (Realtek" ^
+  --f-start 2000 --f-end 8000 --amplitude 0.5 --pings 64 --interval-ms 150 calibrate</pre></div>
+      <p>Se guarda en <code>.sonar/background.npz</code> junto con una <em>huella</em> de la configuración (fs, banda, chirp,
+      ventana, intervalo). Si cambias alguno de esos parámetros, <code>ping</code> rechazará el perfil y te pedirá recalibrar.</p>
+      <div class="callout"><p>En PowerShell el salto de línea es <code>`</code> (acento grave) en vez de <code>^</code>; en bash es <code>\</code>. O escríbelo todo en una línea.</p></div>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="9">
+      <div class="meta">≈ 10 s</div>
+      <h3>Tu primer ping</h3>
+      <p>Pon el objetivo delante y mide. Las opciones globales van <strong>antes</strong> del comando.</p>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>uv run sonar --host-api WASAPI --exclusive --input "Varios micr" --output "Altavoces (Realtek" ^
+  --f-start 2000 --f-end 8000 --amplitude 0.5 --pings 64 --interval-ms 150 ping --plot ascan.png</pre></div>
+      <div class="code"><div class="lbl">Salida (ejemplo)</div><pre>        Ecos (c = 343.2 m/s, 64 pings, resolución 2.9 cm)
+┏━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ # ┃ distancia (m) ┃ retardo (ms) ┃ SNR (dB) ┃
+┡━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ 1 │         <span class="k">0.260</span> │        1.515 │     18.4 │
+└───┴───────────────┴──────────────┴──────────┘</pre></div>
+      <p>Útiles: <code>--json</code> para scripts, <code>--show</code> para abrir la gráfica, <code>--save-raw rec.npy</code> para
+      guardar la grabación cruda y re-analizarla después, <code>--no-background</code> para ver la escena sin restar el fondo.</p>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="10">
+      <div class="meta">≈ 5 min</div>
+      <h3>Valida con una cinta métrica y corrige el sesgo</h3>
+      <p>Mide la distancia real y compárala. Si el error es <strong>constante</strong> (siempre ~4 cm de menos, por ejemplo), es
+      la separación parlante–micrófono: el eco recorre parlante→objeto→micrófono, no 2·d exactos. Corrígelo:</p>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre><span class="c"># distancia = (c·Δt + direct_path) / 2   → un sesgo de −4 cm sugiere ~0.08 m</span>
+uv run sonar ... --direct-path 0.08 ping</pre></div>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="11">
+      <div class="meta">continuo</div>
+      <h3>Modo en vivo</h3>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>uv run sonar ... --pings 4 live      <span class="c"># menos pings = refresca más rápido</span></pre></div>
+      <p>Arriba el A-scan actual, abajo un <em>waterfall</em> (cada fila es una medición; el tiempo baja). Acerca y aleja
+      una carpeta dura: verás una línea diagonal. Los errores transitorios (SNR bajo, clipping) aparecen en la ventana sin cortar
+      el loop. Cierra la ventana o <span class="kbd">Ctrl</span>+<span class="kbd">C</span> para salir.</p>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+
+    <div class="step" data-step="12">
+      <div class="meta">≈ 5 min</div>
+      <h3>Radar polar a mano</h3>
+      <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>uv run sonar ... sweep --out sweep.png --show</pre></div>
+      <p>Gira el equipo a un ángulo, escribe el ángulo (p. ej. <code>-30</code>, <code>0</code>, <code>30</code>) y Enter para medir.
+      Enter vacío termina y dibuja un gráfico polar: ángulo × distancia, color = SNR, punto rojo = eco más fuerte.</p>
+      <label class="check"><input type="checkbox"> Hecho</label>
+    </div>
+  </div>
+
+  <div class="callout ok">
+    <b class="t">🎉 Listo</b>
+    <p>Si llegaste aquí tienes un sonar funcional. Comparte tus resultados (modelo de laptop + salida de <code>diagnose</code>):
+    ver <a href="#contribuir">cómo reportar tu hardware</a>.</p>
+  </div>
+</section>
+
+<!-- ================================================================ LECTURA -->
+<section id="lectura">
+  <div class="eyebrow">Tutorial</div>
+  <h2>Cómo leer un A-scan</h2>
+  <figure>
+    <img src="img/ascan_30.png" alt="A-scan con eco a 0.26 m sobre el umbral de 12 dB" loading="lazy">
+    <figcaption>A-scan real: objeto a 30 cm, 64 pings, fondo restado.</figcaption>
+  </figure>
+  <div class="tablewrap"><table>
+    <tr><th>Elemento</th><th>Qué significa</th></tr>
+    <tr><td>Eje X</td><td>Distancia en metros desde el equipo (ya dividida entre 2: es ida, no ida y vuelta).</td></tr>
+    <tr><td>Eje Y</td><td>SNR en dB: cuánto sobresale la señal sobre el ruido estimado.</td></tr>
+    <tr><td>Franja gris</td><td><strong>Zona ciega</strong> (<code>--min-range</code>): el eco se solapa con el camino directo; no se busca ahí.</td></tr>
+    <tr><td>Línea punteada</td><td>Umbral global <code>--min-snr</code> (12 dB). Debajo, nada se reporta.</td></tr>
+    <tr><td>Triángulos rojos</td><td>Ecos detectados (pasan umbral global, umbral local CFAR y rechazo de lóbulos laterales).</td></tr>
+    <tr><td>Título</td><td>Pings promediados, si se restó fondo, y SNR del camino directo (salud de la medición: &gt;20 dB es bueno).</td></tr>
+  </table></div>
+  <div class="callout tip"><p><b>Regla práctica:</b> un eco real <em>se mueve</em> cuando mueves el objeto. Si un pico aparece en todas
+  las mediciones sin importar dónde esté el objeto, es <em>clutter</em> de la escena, no tu objetivo. Esta regla nos salvó de un
+  falso positivo (ver <a href="#resultados">resultados</a>).</p></div>
+</section>
+
+<!-- ================================================================ FÍSICA -->
+<section id="fisica">
+  <div class="eyebrow">Entender</div>
+  <h2>Física del sonar</h2>
+
+  <h3>1. Tiempo de vuelo</h3>
+  <div class="diagram">
+    <svg viewBox="0 0 760 210" role="img" aria-label="Camino directo del parlante al micrófono y camino de eco rebotando en la pared">
+      <rect x="40" y="70" width="90" height="70" rx="8" fill="var(--surface-2)" stroke="var(--muted)"/>
+      <circle cx="120" cy="125" r="7" fill="#d9a520"/><text x="58" y="160" font-size="12" class="muted">parlante (S)</text>
+      <circle cx="120" cy="85" r="6" fill="var(--info)"/><text x="58" y="60" font-size="12" class="muted">micrófono (M)</text>
+      <rect x="660" y="20" width="24" height="170" fill="var(--surface-2)" stroke="var(--muted)"/>
+      <text x="630" y="205" font-size="13">reflector</text>
+      <path d="M120 118 C 145 110, 145 95, 122 91" fill="none" stroke="var(--ok)" stroke-width="2.5"/>
+      <text x="150" y="108" font-size="12" fill="var(--ok)" style="fill:var(--ok)">camino directo → t₀</text>
+      <path d="M128 127 L656 115" stroke="#d9a520" stroke-width="2.5"/>
+      <path d="M656 105 L128 86" stroke="var(--info)" stroke-width="2.5"/>
+      <text x="360" y="140" font-size="13" style="fill:#c0900f">ida</text>
+      <text x="360" y="88" font-size="13" style="fill:var(--info)">vuelta → t_eco</text>
+      <line x1="130" y1="185" x2="656" y2="185" stroke="var(--muted)" marker-start="url(#b1)" marker-end="url(#b2)"/>
+      <text x="380" y="178" font-size="14" font-weight="700">d</text>
+      <defs>
+        <marker id="b1" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M8 0 L0 4 L8 8" fill="none" stroke="var(--muted)"/></marker>
+        <marker id="b2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="var(--muted)"/></marker>
+      </defs>
+    </svg>
+  </div>
+  <div class="formula">d = ( c · (t_eco − t₀) + direct_path ) / 2</div>
+  <div class="formula">c = 331.3 · √(1 + T / 273.15) m/s &nbsp;&nbsp;→ 343.2 m/s a 20 °C</div>
+  <p><strong>La idea clave del proyecto:</strong> Windows mete entre 10 y 300 ms de latencia desconocida entre "reproduce esto" y
+  "esto es lo que grabé". 10 ms de error serían 1.7 m. La solución: <strong>no medir tiempos absolutos</strong>. El primer sonido
+  fuerte que llega al micrófono es el que viaja directo desde el parlante (t₀). Toda distancia se mide <em>respecto a ese pico</em>,
+  así la latencia del sistema se cancela por completo. Un test de propiedades lo verifica con latencias aleatorias de 0 a 400 ms.</p>
+
+  <h3>2. ¿Por qué un chirp y no un "beep"?</h3>
+  <p>Un pulso corto tiene poca energía (ruidoso); uno largo tiene mucha energía pero se emborrona en el tiempo. El <strong>chirp</strong>
+  (barrido lineal de f_start a f_end) resuelve el dilema: es largo (8 ms = 2.7 m de sonido en el aire) pero, tras el
+  <strong>filtro adaptado</strong> (correlación con la señal emitida), se <em>comprime</em> a un pico de ~1/B segundos. Es la misma
+  técnica de los radares (<em>pulse compression</em>).</p>
+  <div class="formula">resolución = c / (2·B) &nbsp;&nbsp;→ 6 kHz de banda (2–8 kHz) ≈ 2.9 cm · 4 kHz ≈ 4.3 cm · 8 kHz ≈ 2.1 cm</div>
+  <p><strong>Resolución ≠ precisión.</strong> La resolución es qué tan cerca pueden estar dos ecos y seguir viéndose separados. La
+  precisión de <em>un</em> eco aislado es mucho mejor (sub-centimétrica en simulación) gracias a la interpolación parabólica del pico.</p>
+
+  <h3>3. Promediado coherente</h3>
+  <p>Emitimos N chirps idénticos a intervalos fijos. La señal se suma en fase; el ruido (aleatorio) no. El ruido baja √N en
+  amplitud: 16 pings ≈ +12 dB, 64 pings ≈ +18 dB. <strong>Coherente</strong> significa alineado a la muestra: a 6 kHz, un desfase de una
+  sola muestra (21 µs) ya destruye la suma. Esto resultó ser el problema más difícil en hardware real (ver <a href="#bitacora">bitácora</a>).</p>
+
+  <h3>4. El tren de pings</h3>
+  <div class="diagram">
+    <svg viewBox="0 0 760 150" role="img" aria-label="Estructura del tren de pings: silencio, pings de calentamiento, N pings medidos, cola">
+      <line x1="20" y1="80" x2="740" y2="80" stroke="var(--border)" stroke-width="2"/>
+      <rect x="20" y="62" width="70" height="36" fill="var(--surface-2)" stroke="var(--border)"/>
+      <text x="26" y="52" font-size="12" class="muted">silencio 50 ms</text>
+      <text x="22" y="118" font-size="11" class="muted">→ ruido de ref.</text>
+      <g fill="var(--faint)"><rect x="100" y="56" width="10" height="48"/><rect x="160" y="56" width="10" height="48"/></g>
+      <text x="96" y="40" font-size="12" class="muted">warm-up ×2</text>
+      <text x="96" y="124" font-size="11" class="muted">no se promedian</text>
+      <g fill="#d9a520"><rect x="220" y="50" width="10" height="60"/><rect x="280" y="50" width="10" height="60"/><rect x="340" y="50" width="10" height="60"/><rect x="400" y="50" width="10" height="60"/></g>
+      <text x="440" y="86" font-size="16" class="muted">· · ·</text>
+      <rect x="490" y="50" width="10" height="60" fill="#d9a520"/>
+      <text x="230" y="38" font-size="12">N pings (por defecto 16), uno cada 60 ms</text>
+      <line x1="220" y1="128" x2="280" y2="128" stroke="var(--muted)"/><text x="232" y="144" font-size="11" class="muted">periodo</text>
+      <rect x="510" y="62" width="230" height="36" fill="var(--surface-2)" stroke="var(--border)"/>
+      <text x="520" y="52" font-size="12" class="muted">cola: 1 periodo + 500 ms</text>
+      <text x="520" y="118" font-size="11" class="muted">absorbe la latencia de audio</text>
+    </svg>
+  </div>
+  <p>El silencio inicial garantiza un tramo de puro ruido al principio de la grabación (la latencia sólo puede <em>retrasar</em>
+  la señal, nunca adelantarla), que se usa para estimar el ruido. El periodo debe ser mayor que el chirp + el viaje de ida y vuelta
+  a <code>max_range</code> + guarda; la configuración lo valida y te dice el mínimo.</p>
+</section>
+
+<!-- ================================================================ CALCULADORA -->
+<section id="calculadora">
+  <div class="eyebrow">Interactivo</div>
+  <h2>Calculadora de parámetros</h2>
+  <p>Replica las fórmulas y validaciones de <code>SonarConfig</code>. Úsala para elegir banda, intervalo y alcance antes de medir.</p>
+  <div class="card calc">
+    <div>
+      <div class="inrow">
+        <label>f_start (Hz)<input id="cFs" type="number" value="2000" step="100"></label>
+        <label>f_end (Hz)<input id="cFe" type="number" value="8000" step="100"></label>
+      </div>
+      <div class="inrow">
+        <label>Temperatura (°C)<input id="cT" type="number" value="20" step="1"></label>
+        <label>Tasa de muestreo (Hz)<input id="cRate" type="number" value="48000" step="100"></label>
+      </div>
+      <div class="inrow">
+        <label>Chirp (ms)<input id="cChirp" type="number" value="8" step="0.5"></label>
+        <label>Intervalo entre pings (ms)<input id="cInt" type="number" value="150" step="5"></label>
+      </div>
+      <div class="inrow">
+        <label>Alcance máx. (m)<input id="cMax" type="number" value="5" step="0.5"></label>
+        <label>Pings<input id="cN" type="number" value="64" step="1"></label>
+      </div>
+      <div class="inrow">
+        <label>direct_path (m)<input id="cDp" type="number" value="0" step="0.01"></label>
+        <label>Retardo eco − directo (ms)<input id="cDelay" type="number" value="1.515" step="0.01"></label>
+      </div>
+    </div>
+    <div class="out" id="cOut"></div>
+  </div>
+</section>
+
+<!-- ================================================================ PIPELINE -->
+<section id="pipeline">
+  <div class="eyebrow">Entender</div>
+  <h2>Pipeline de procesamiento de señal</h2>
+  <p>De la grabación cruda a una lista de distancias. Todo vive en <code>processing.py</code> y <code>detection.py</code>, como
+  funciones puras (arrays entran, arrays salen).</p>
+  <div class="flow">
+    <div class="n"><i>01</i><b>Validar grabación</b><span>silencio digital → permiso; ≥0.99 FS → clipping</span></div>
+    <div class="n"><i>02</i><b>Pasa-banda</b><span>Butterworth orden 4, fase cero</span></div>
+    <div class="n"><i>03</i><b>Filtro adaptado</b><span>correlación FFT con el chirp</span></div>
+    <div class="n"><i>04</i><b>Envolvente</b><span>|señal analítica| (Hilbert)</span></div>
+    <div class="n hl"><i>05</i><b>t₀ = camino directo</b><span>gruesa + envolvente plegada sobre todos los pings</span></div>
+    <div class="n hl"><i>06</i><b>Re-alinear cada ping</b><span>correlación sub-muestra (buffers perdidos)</span></div>
+    <div class="n"><i>07</i><b>Promedio coherente</b><span>ruido ↓ √N</span></div>
+    <div class="n"><i>08</i><b>Alineación sub-muestra</b><span>directo exactamente en <code>guard</code></span></div>
+    <div class="n hl"><i>09</i><b>Restar fondo</b><span>refinado de fase + ganancia por mínimos cuadrados</span></div>
+    <div class="n"><i>10</i><b>Detección</b><span>umbral global + OS-CFAR + lóbulos</span></div>
+    <div class="n"><i>11</i><b>Distancia</b><span>pico parabólico → c·Δt/2</span></div>
+  </div>
+  <p style="font-size:.88rem;color:var(--muted)">Resaltados: pasos que no estaban en el diseño inicial y nacieron de pruebas en hardware real.</p>
+
+  <h3>01 · Validar la grabación</h3>
+  <p><code>check_recording</code>: si <em>todas</em> las muestras son cero exacto, el sistema operativo está bloqueando el micrófono
+  (Windows y macOS no dan error, entregan ceros) → <code>MicrophonePermissionError</code> con instrucciones por SO. Si alguna muestra
+  llega a <code>clip_level</code> (0.99) → <code>ClippingError</code>: la saturación distorsiona el filtro adaptado.</p>
+
+  <h3>02 · Pasa-banda de fase cero</h3>
+  <div class="code"><div class="lbl">processing.py<button class="copy">Copiar</button></div><pre>lo = max(0.9 * f_lo, 20.0); hi = min(1.1 * f_hi, 0.99 * nyq)
+sos = butter(4, [lo / nyq, hi / nyq], btype="bandpass", output="sos")
+return sosfiltfilt(sos, x)   <span class="c"># ida y vuelta → desfase cero → no sesga los tiempos de llegada</span></pre></div>
+
+  <h3>03 · Filtro adaptado</h3>
+  <p>Correlación cruzada (vía FFT) con la plantilla del chirp, indexada por <em>lag</em>: <code>out[k]</code> es máximo cuando el chirp
+  empieza en <code>x[k]</code>. El chirp de 8 ms se comprime a un pico de ~1/B. La ventana Tukey (α = 0.25) en el chirp reduce los
+  lóbulos laterales en distancia y evita "clicks" en el parlante.</p>
+
+  <h3>04 · Envolvente de Hilbert</h3>
+  <p>La salida del filtro oscila a la frecuencia portadora. Su magnitud analítica <code>|hilbert(x)|</code> da una envolvente suave
+  cuyo máximo es el instante de llegada.</p>
+
+  <h3>05 · El camino directo como t₀</h3>
+  <ol>
+    <li><strong>Ruido de referencia</strong>: mediana de la potencia de envolvente en el silencio inicial, dividida por ln 2
+    (ruido gaussiano → envolvente Rayleigh → potencia exponencial, cuya mediana es media·ln 2). La mediana es robusta a picos esporádicos.</li>
+    <li><strong>SNR directo</strong>: si el pico más fuerte no supera 15 dB sobre el ruido, se distingue entre
+    <code>BandOutOfResponseError</code> (cuarto silencioso pero el chirp no aparece → el hardware no responde en esa banda) y
+    <code>LowSNRError</code> (demasiado ruido).</li>
+    <li><strong>Gruesa</strong>: primera muestra que supera el 50 % del pico (la <em>primera llegada fuerte</em>, no la más fuerte).</li>
+    <li><strong>Refinada sobre la envolvente plegada</strong>: se promedian las ventanas alrededor de cada ping medido. En hardware real
+    el camino directo y una reflexión cercana (tapa, mesa) pueden intercambiar el papel de "más fuerte" de ping a ping; un solo ping no es
+    una referencia fiable.</li>
+  </ol>
+
+  <h3>06 · Re-alinear cada ping (<code>align_frames</code>)</h3>
+  <p>Descubierto en hardware: los streams dúplex de WASAPI ocasionalmente <strong>pierden o repiten un buffer completo de 32 muestras</strong>
+  en mitad del tren, lo que desplaza todos los pings siguientes. A 6 kHz eso destruye el promedio. Solución:</p>
+  <ul>
+    <li>Cada ping se recorta con <code>max_slip_samples</code> (128) muestras extra a cada lado.</li>
+    <li>Se calcula el desfase de cada ping contra el primero por correlación <em>sensible a la fase</em> en la región del camino directo,
+    con precisión sub-muestra (parábola), y se normaliza a la mediana.</li>
+    <li>Se hace un promedio provisional y se re-estima cada desfase contra él (segunda pasada, más robusta).</li>
+    <li>Se aplica el desplazamiento fraccionario exacto en frecuencia: <code>X(f)·e^(−j2πf·shift)</code>.</li>
+  </ul>
+  <p>El test <code>test_duplex_buffer_slips_do_not_break_averaging</code> inyecta slips de ±32 y 64 muestras en el simulador y exige
+  que el eco conserve su SNR (≤ 3 dB de pérdida).</p>
+
+  <h3>07–08 · Promedio coherente y alineación final</h3>
+  <p>Se promedian los pings ya alineados. Luego se busca la primera llegada fuerte en la envolvente promedio, se interpola el pico
+  parabólicamente y se desplaza el frame para que el camino directo quede exactamente en el índice <code>guard</code> (= longitud del chirp).</p>
+
+  <h3>09 · Sustracción de fondo</h3>
+  <p>Con un <code>BackgroundProfile</code> (de <code>calibrate</code>), se resta la escena estática. Dos detalles hacen que funcione en la práctica:</p>
+  <ul>
+    <li><strong>Refinado de fase</strong>: alinear por pico de envolvente deja un error de fracción de muestra que, a la frecuencia portadora,
+    basta para dejar residuos fuertes. Se hacen dos pasadas de correlación cruzada contra el frame de referencia completo.</li>
+    <li><strong>Ganancia por mínimos cuadrados</strong> sobre la región del camino directo: <code>scale = ⟨a,r⟩/⟨r,r⟩</code>, que absorbe
+    pequeños cambios de volumen entre calibración y medida.</li>
+  </ul>
+
+  <h3>10 · Detección</h3>
+  <p>Un pico candidato (dentro de <code>[min_range, max_range]</code>) se acepta si cumple <strong>las tres</strong>:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Prueba</th><th>Umbral</th><th>Para qué</th></tr>
+    <tr><td>Global</td><td><code>min_snr_db</code> = 12 dB sobre el ruido del perfil</td><td>Acota las falsas alarmas</td></tr>
+    <tr><td>Local OS-CFAR</td><td><code>cfar_snr_db</code> = 8 dB sobre la mediana de su vecindario</td><td>Rechaza clutter extendido. La mediana (no la media) no se deja enmascarar por un eco fuerte vecino.</td></tr>
+    <tr><td>Lóbulos laterales</td><td><code>sidelobe_margin_db</code> = 6 dB sobre la fuga esperada</td><td>Usa la autocorrelación real del chirp para descartar "fantasmas" que cada llegada fuerte (incluido el directo) proyecta. Voraz: de más fuerte a más débil.</td></tr>
+  </table></div>
+
+  <h3>11 · Distancia</h3>
+  <p>El pico se refina con una parábola de 3 puntos (precisión sub-muestra) y se convierte:
+  <code>samples_to_range(lag) = (c·lag/fs + direct_path) / 2</code>. Se devuelven los <code>n_echoes</code> (5) más fuertes por SNR.</p>
+</section>
+
+<!-- ================================================================ ARQUITECTURA -->
+<section id="arquitectura">
+  <div class="eyebrow">Entender</div>
+  <h2>Arquitectura del código</h2>
+  <p>Puertos y adaptadores: el dominio (procesamiento de señal) no sabe nada de audio real. Sólo <code>SoundDeviceAudio</code> toca
+  <code>sounddevice</code>, y lo importa de forma perezosa, así que los tests nunca necesitan PortAudio.</p>
+  <div class="diagram arch">
+    <div class="layer">Interfaz</div>
+    <div class="row"><div class="box"><b>cli.py</b><span>typer · parsea opciones → SonarConfig · traduce SonarError a "Error / Cómo resolverlo" (exit 2)</span></div></div>
+    <div class="layer">Aplicación</div>
+    <div class="row" style="grid-template-columns:2fr 1fr"><div class="box"><b>engine.py · SonarEngine</b><span>acquire · analyse · measure · calibrate · diagnose</span></div><div class="box"><b>viz.py</b><span>A-scan, LiveView, respuesta, radar polar</span></div></div>
+    <div class="layer">Dominio (puro, sin I/O)</div>
+    <div class="row g4 grid"><div class="box"><b>signal.py</b><span>chirp, tren, barrido</span></div><div class="box"><b>processing.py</b><span>filtros, alineación, fondo</span></div><div class="box"><b>detection.py</b><span>CFAR, lóbulos, Echo</span></div><div class="box"><b>diagnostics.py</b><span>respuesta, banda</span></div></div>
+    <div class="row" style="grid-template-columns:1fr 1fr"><div class="box"><b>config.py · SonarConfig</b><span>inmutable, validada, magnitudes derivadas</span></div><div class="box"><b>errors.py</b><span>SonarError(message, hint)</span></div></div>
+    <div class="layer">Puerto</div>
+    <div class="row"><div class="box port"><b>audio.AudioDevice (Protocol)</b><span>playrec · record · check_settings · list_devices</span></div></div>
+    <div class="layer">Adaptadores</div>
+    <div class="row" style="grid-template-columns:1fr 1fr"><div class="box"><b>SoundDeviceAudio</b><span>PortAudio, WASAPI exclusivo, resolución por nombre + host API, tope de amplitud</span></div><div class="box"><b>FakeAudioDevice + simulation.py</b><span>escena sintética determinista para tests</span></div></div>
+  </div>
+
+  <h3>Mapa de archivos</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Archivo</th><th>Líneas</th><th>Responsabilidad</th></tr>
+    <tr><td><code>config.py</code></td><td>199</td><td><code>SonarConfig</code> inmutable (<code>frozen dataclass</code>), validación con mensajes accionables, conversiones distancia↔muestras, huella para el fondo.</td></tr>
+    <tr><td><code>signal.py</code></td><td>70</td><td><code>linear_chirp</code> (también plantilla del filtro adaptado), <code>ping_train</code>, <code>linear_sweep</code>.</td></tr>
+    <tr><td><code>audio.py</code></td><td>306</td><td>Puerto <code>AudioDevice</code>, adaptador real, fake, traducción de códigos de error de PortAudio.</td></tr>
+    <tr><td><code>simulation.py</code></td><td>90</td><td>Escena: latencia, camino directo, reflectores con retardos fraccionarios exactos (FFT), banda del hardware, ruido, clipping, mic bloqueado, slips de buffer.</td></tr>
+    <tr><td><code>processing.py</code></td><td>347</td><td>Primitivas DSP, <code>align_frames</code>, <code>EchoProfile</code>, <code>BackgroundProfile</code>, <code>process_recording</code>.</td></tr>
+    <tr><td><code>detection.py</code></td><td>95</td><td><code>os_cfar_noise</code>, <code>detect_echoes</code> → <code>list[Echo]</code>.</td></tr>
+    <tr><td><code>diagnostics.py</code></td><td>121</td><td>Welch PSD barrido vs. ruido (promedio por mediana), <code>recommend_band</code>.</td></tr>
+    <tr><td><code>engine.py</code></td><td>72</td><td>Servicio que orquesta dispositivo + dominio.</td></tr>
+    <tr><td><code>viz.py</code></td><td>164</td><td>Gráficas matplotlib.</td></tr>
+    <tr><td><code>cli.py</code></td><td>384</td><td>Comandos typer; capa delgada.</td></tr>
+    <tr><td><code>errors.py</code></td><td>78</td><td>Jerarquía de errores + instrucciones de permisos por SO.</td></tr>
+  </table></div>
+
+  <h3>Usarlo como librería</h3>
+  <div class="code"><div class="lbl">Python<button class="copy">Copiar</button></div><pre><span class="k">from</span> sonar.audio <span class="k">import</span> SoundDeviceAudio, FakeAudioDevice
+<span class="k">from</span> sonar.config <span class="k">import</span> SonarConfig
+<span class="k">from</span> sonar.engine <span class="k">import</span> SonarEngine
+<span class="k">from</span> sonar.simulation <span class="k">import</span> Scene, Reflector
+
+<span class="c"># Simulado: una pared a 1.2 m, latencia arbitraria</span>
+cfg = SonarConfig(f_start=2000, f_end=8000)
+fake = FakeAudioDevice(scene=Scene(reflectors=(Reflector(1.2, 0.05),), latency_s=0.11))
+m = SonarEngine(fake, cfg).measure()
+print([round(e.distance_m, 3) <span class="k">for</span> e <span class="k">in</span> m.echoes])
+
+<span class="c"># Real</span>
+dev = SoundDeviceAudio(<span class="k">"Varios micr"</span>, <span class="k">"Altavoces (Realtek"</span>, cfg.max_amplitude, host_api=<span class="k">"WASAPI"</span>, exclusive=<span class="k">True</span>)
+m = SonarEngine(dev, cfg).measure()</pre></div>
+</section>
+
+<!-- ================================================================ BITÁCORA -->
+<section id="bitacora">
+  <div class="eyebrow">Historia</div>
+  <h2>Bitácora del proyecto: de la simulación al hardware real</h2>
+  <p class="lead">Cada fase registra el problema, cómo se detectó, la causa y la solución que quedó en el código. Si replicas el
+  proyecto en otra laptop, probablemente te cruces con varios de estos.</p>
+
+  <div class="timeline">
+
+    <div class="tl ok">
+      <div class="when">FASE 1 · DISEÑO</div>
+      <h4>Simulación primero</h4>
+      <p>Antes de tocar un micrófono se construyó la cadena completa contra un simulador acústico (<code>simulation.py</code>) con
+      latencia aleatoria, camino directo, reflectores con retardos fraccionarios exactos, respuesta del hardware, ruido y clipping.
+      Banda inicial: casi-ultrasonido 18–22 kHz (casi inaudible). Meta: error &lt; 2 cm en cualquier distancia y latencia.</p>
+      <dl class="pfs"><dt>Decisión</dt><dd>Usar el camino directo como t₀ para cancelar la latencia; arquitectura de puertos para testear sin hardware.</dd></dl>
+    </div>
+
+    <div class="tl bad">
+      <div class="when">FASE 2 · PRIMER CONTACTO</div>
+      <h4>El hardware no emite casi-ultrasonido</h4>
+      <dl class="pfs">
+        <dt>Síntoma</dt><dd>Ningún eco; el chirp ni siquiera aparecía en el camino directo.</dd>
+        <dt>Diagnóstico</dt><dd><code>sonar diagnose</code>: SNR ≈ 0 dB sobre ~10 kHz; el hardware no responde sobre ~18 kHz.</dd>
+        <dt>Solución</dt><dd>Banda 2–8 kHz. De aquí nacieron <code>diagnose</code>, <code>recommend_band</code> y el error <code>BandOutOfResponseError</code>, que distingue "no responde" de "mucho ruido".</dd>
+      </dl>
+      <figure><img src="img/respuesta.png" alt="Respuesta en frecuencia medida" loading="lazy"><figcaption>Respuesta medida parlante→micrófono. Banda por defecto sombreada: sin señal.</figcaption></figure>
+    </div>
+
+    <div class="tl bad">
+      <div class="when">FASE 3 · WINDOWS</div>
+      <h4>Windows borra los chirps: modo compartido vs. exclusivo</h4>
+      <dl class="pfs">
+        <dt>Síntoma</dt><dd>Los primeros pings salían bien y luego desaparecían; jitter de decenas de muestras entre pings; corte sobre ~8 kHz.</dd>
+        <dt>Causa</dt><dd>En WASAPI <em>compartido</em> Windows aplica procesamiento de voz al micrófono (cancelación de eco, compuerta de ruido, AGC). Para el sistema, nuestro chirp <em>es</em> un eco a cancelar.</dd>
+        <dt>Solución</dt><dd><code>--host-api WASAPI --exclusive</code>: acceso directo al hardware. Resultado: latencia ~42 ms estable, jitter ±0.5 muestras.</dd>
+      </dl>
+    </div>
+
+    <div class="tl warn">
+      <div class="when">FASE 4 · DISPOSITIVOS</div>
+      <h4>El micrófono que desaparece</h4>
+      <dl class="pfs">
+        <dt>Síntomas</dt><dd>Grabaciones en cero absoluto; el micrófono "Varios micrófonos (Realtek)" no aparecía; los índices cambiaban entre corridas.</dd>
+        <dt>Causas</dt><dd>(a) Armoury Crate "Cancelación de ruido con IA bidireccional" deshabilita el mic físico; (b) quedó deshabilitado y en <em>mute</em> al apagarla; (c) con la tapa cerrada el mic se apaga; (d) al conectar el monitor externo los índices se desplazan.</dd>
+        <dt>Solución</dt><dd>Rehabilitar en <code>mmsys.cpl</code>; selección por <strong>nombre + host API</strong> (<code>_resolve</code> exige exactamente una coincidencia); error de silencio digital con instrucciones por SO.</dd>
+      </dl>
+    </div>
+
+    <div class="tl warn">
+      <div class="when">FASE 5 · NIVEL</div>
+      <h4>Amplificador dormido y nivel bajo</h4>
+      <dl class="pfs">
+        <dt>Síntoma</dt><dd>En exclusivo el nivel es bajo (pico ~0.003) y los primeros 1–2 pings difieren del resto.</dd>
+        <dt>Causa</dt><dd>El amplificador del parlante despierta del ahorro de energía durante los primeros cientos de ms.</dd>
+        <dt>Solución</dt><dd><code>warmup_pings = 2</code>: se emiten pero no se promedian. Más pings (64) y amplitud 0.5 compensan el nivel.</dd>
+      </dl>
+    </div>
+
+    <div class="tl bad">
+      <div class="when">FASE 6 · EL BUG MÁS DIFÍCIL</div>
+      <h4>Buffers perdidos rompen el promedio coherente</h4>
+      <dl class="pfs">
+        <dt>Síntoma</dt><dd>El promedio de 16+ pings daba <em>peor</em> resultado que un ping; los pings tardíos estaban corridos.</dd>
+        <dt>Causa</dt><dd>El stream dúplex de WASAPI pierde o repite buffers de 32 muestras en mitad del tren. Todo lo grabado después se desplaza.</dd>
+        <dt>Solución</dt><dd><code>align_frames</code>: re-alineación sub-muestra de cada ping sobre su propio contenido, con margen de ±128 muestras. Se añadió <code>Scene.slips</code> al simulador y un test de regresión.</dd>
+      </dl>
+    </div>
+
+    <div class="tl warn">
+      <div class="when">FASE 7 · REFERENCIA</div>
+      <h4>El camino directo cambia de identidad</h4>
+      <dl class="pfs">
+        <dt>Síntoma</dt><dd>t₀ saltaba entre pings.</dd>
+        <dt>Causa</dt><dd>El directo y una reflexión muy cercana (tapa, mesa) tienen amplitud similar e intercambian el papel de pico más fuerte.</dd>
+        <dt>Solución</dt><dd>t₀ = <em>primera</em> llegada fuerte (≥ 50 % del pico), refinada sobre la envolvente plegada de todos los pings.</dd>
+      </dl>
+    </div>
+
+    <div class="tl warn">
+      <div class="when">FASE 8 · FONDO</div>
+      <h4>La resta de fondo dejaba residuos</h4>
+      <dl class="pfs">
+        <dt>Síntoma</dt><dd>Ecos estáticos fuertes sobrevivían a la sustracción.</dd>
+        <dt>Causa</dt><dd>Alinear por pico de envolvente deja un sesgo de fracción de muestra; a la portadora eso basta para no cancelar.</dd>
+        <dt>Solución</dt><dd>Dos pasadas de correlación sensible a la fase contra el frame completo de referencia + ganancia por mínimos cuadrados. Separar pings (<code>--interval-ms 150</code>) para que la reverberación del ping anterior no se sume coherentemente.</dd>
+      </dl>
+    </div>
+
+    <div class="tl ok">
+      <div class="when">FASE 9 · 28-OCT-2026 · PRUEBAS CON OBJETOS REALES</div>
+      <h4>Medición de objetos a 30, 50 y 80 cm</h4>
+      <p>Configuración: WASAPI exclusivo, 2–8 kHz, 64 pings, amplitud 0.5, intervalo 150 ms, fondo restado. Detalle en
+      <a href="#resultados">resultados</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ RESULTADOS -->
+<section id="resultados">
+  <div class="eyebrow">Historia</div>
+  <h2>Resultados reales (sin maquillaje)</h2>
+  <p>Publicamos lo que funcionó y lo que no. Un proyecto open source replicable necesita expectativas honestas.</p>
+
+  <div class="tablewrap"><table>
+    <tr><th>Escenario</th><th>Real</th><th>Medido</th><th>Veredicto</th></tr>
+    <tr><td>Cuarto vacío, 64 pings, fondo restado</td><td>sin objetivo</td><td>ningún pico sobre 12 dB</td><td><span class="tag ok">sin falsas alarmas</span></td></tr>
+    <tr><td>Objeto a 30 cm</td><td>0.30 m</td><td><strong>0.26 m</strong>, repetible</td><td><span class="tag ok">detectado</span> sesgo ≈ −4 cm</td></tr>
+    <tr><td>Objeto a 50 cm</td><td>0.50 m</td><td>0.47 m</td><td><span class="tag warn">no confiable</span></td></tr>
+    <tr><td>Objeto a 80 cm</td><td>0.80 m</td><td>—</td><td><span class="tag bad">no detectado</span></td></tr>
+  </table></div>
+
+  <div class="figpair">
+    <figure><img src="img/ascan_cuarto_vacio.png" alt="A-scan del cuarto vacío sin picos sobre el umbral" loading="lazy"><figcaption><strong>Cuarto vacío.</strong> Todo bajo el umbral: el detector no inventa ecos.</figcaption></figure>
+    <figure><img src="img/ascan_30.png" alt="A-scan con objeto a 30 cm: pico en 0.26 m" loading="lazy"><figcaption><strong>Objeto a 30 cm → 0.26 m.</strong> También aparecen 0.38/0.46/0.52 m.</figcaption></figure>
+    <figure><img src="img/ascan_objeto.png" alt="A-scan con objeto a 50 cm: pico en 0.47 m" loading="lazy"><figcaption><strong>Objeto a 50 cm → "0.47 m".</strong> Parece correcto… pero ver abajo.</figcaption></figure>
+    <figure><img src="img/ascan_80.png" alt="A-scan con objeto a 80 cm: sin eco cerca de 0.8 m" loading="lazy"><figcaption><strong>Objeto a 80 cm.</strong> Nada en 0.8 m; de nuevo el cúmulo 0.21–0.52 m.</figcaption></figure>
+  </div>
+
+  <div class="callout warn">
+    <b class="t">Por qué "0.47 m a 50 cm" no cuenta como éxito</b>
+    <p>Un cúmulo de picos en <strong>0.38 / 0.46 / 0.52 m</strong> aparece en <em>todas</em> las corridas, esté el objeto a 30, 50 u 80 cm.
+    No se mueve con el objeto, así que no es el objeto: es algo variable en la escena que la calibración no captura (posiblemente la persona
+    que opera el equipo). El 0.47 m coincide con ese cúmulo por casualidad.</p>
+  </div>
+
+  <figure><img src="img/ascan_30_vs_80.png" alt="Perfil diferencial 30 cm frente a 80 cm con pico en 0.26 m" loading="lazy">
+  <figcaption><strong>Diferencial 30 cm vs. 80 cm.</strong> Comparar dos escenas que sólo difieren en la posición del objeto aísla lo que
+  cambió: 0.26 m vuelve a aparecer. El sesgo de ≈ −4 cm se vio en ambos sentidos de la diferencia.</figcaption></figure>
+
+  <h3>Interpretación</h3>
+  <ul>
+    <li><strong>Sesgo de −4 cm.</strong> Hipótesis: es la separación parlante–micrófono. Con <code>direct_path = 0</code> la fórmula mide
+    ≈ d − s/2; un sesgo de 4 cm corresponde a s ≈ 8 cm. Prueba <code>--direct-path 0.08</code> y valida con cinta. <em>(Pendiente de confirmar.)</em></li>
+    <li><strong>Alcance efectivo ≈ 30–50 cm</strong> con objetos pequeños en esta laptop. El nivel de salida en exclusivo es bajo y el eco cae
+    con la distancia; paredes grandes y duras deberían llegar más lejos.</li>
+    <li><strong>Clutter variable</strong> en 0.2–0.55 m: el límite práctico hoy no es el ruido sino la escena no estática.</li>
+  </ul>
+
+  <details>
+    <summary>Primeras mediciones (antes de afinar la configuración)</summary>
+    <div class="figpair" style="margin-top:10px">
+      <figure><img src="img/ascan.png" alt="Primer A-scan sin sustracción de fondo" loading="lazy"><figcaption>16 pings, <strong>sin</strong> fondo: lóbulos y clutter cercano compiten con el umbral.</figcaption></figure>
+      <figure><img src="img/ascan_vacio.png" alt="A-scan con 16 pings y fondo, pico en 0.12 m" loading="lazy"><figcaption>16 pings, con fondo: un residuo en 0.12 m, pegado a la zona ciega. Motivó pasar a 64 pings e intervalo de 150 ms.</figcaption></figure>
+    </div>
+  </details>
+
+  <h3>Configuración verificada para replicar</h3>
+  <div class="code"><div class="lbl">ASUS ROG/TUF · Realtek · Windows 11<button class="copy">Copiar</button></div><pre>sonar --host-api WASAPI --exclusive --input "Varios micr" --output "Altavoces (Realtek" --f-start 2000 --f-end 8000 --amplitude 0.5 --pings 64 --interval-ms 150 ping</pre></div>
+</section>
+
+<!-- ================================================================ CLI -->
+<section id="cli">
+  <div class="eyebrow">Referencia</div>
+  <h2>Referencia de la CLI</h2>
+  <p>Forma: <code>sonar [OPCIONES GLOBALES] COMANDO [OPCIONES DEL COMANDO]</code>. Las globales van <strong>antes</strong> del comando.</p>
+  <h3>Opciones globales</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Opción</th><th>Por defecto</th><th>Descripción</th></tr>
+    <tr><td><code>--band ultrasonic|audible</code></td><td>ultrasonic</td><td>Preset 18–22 kHz u 8–16 kHz</td></tr>
+    <tr><td><code>--f-start</code> / <code>--f-end</code></td><td>18000 / 22000</td><td>Banda manual (Hz); gana sobre <code>--band</code></td></tr>
+    <tr><td><code>--fs</code></td><td>48000</td><td>Tasa de muestreo (Hz)</td></tr>
+    <tr><td><code>--chirp-ms</code></td><td>8</td><td>Duración del chirp</td></tr>
+    <tr><td><code>--window</code></td><td>tukey</td><td><code>tukey</code> (α 0.25) o <code>hann</code></td></tr>
+    <tr><td><code>--pings</code></td><td>16</td><td>Pings promediados coherentemente</td></tr>
+    <tr><td><code>--warmup</code></td><td>2</td><td>Pings de calentamiento emitidos pero no promediados</td></tr>
+    <tr><td><code>--interval-ms</code></td><td>60</td><td>Intervalo entre pings; súbelo (150–250) en cuartos reverberantes</td></tr>
+    <tr><td><code>--amplitude</code></td><td>0.1</td><td>Amplitud digital (0–1)</td></tr>
+    <tr><td><code>--max-amplitude</code></td><td>0.5</td><td>Tope de seguridad; el adaptador bloquea señales por encima</td></tr>
+    <tr><td><code>--temperature</code></td><td>20 °C</td><td>Para la velocidad del sonido</td></tr>
+    <tr><td><code>--sound-speed</code></td><td>—</td><td>Fuerza c (m/s), ignora la temperatura</td></tr>
+    <tr><td><code>--direct-path</code></td><td>0 m</td><td>Separación parlante–micrófono, corrige el sesgo</td></tr>
+    <tr><td><code>--min-range</code> / <code>--max-range</code></td><td>0.15 / 5 m</td><td>Ventana de búsqueda (zona ciega / alcance)</td></tr>
+    <tr><td><code>--min-snr</code></td><td>12 dB</td><td>SNR mínimo de un eco</td></tr>
+    <tr><td><code>--input</code> / <code>--output</code></td><td>predeterminado del SO</td><td>Índice o parte del nombre del dispositivo</td></tr>
+    <tr><td><code>--host-api</code></td><td>—</td><td>Restringe la búsqueda por nombre a una host API (p. ej. <code>WASAPI</code>)</td></tr>
+    <tr><td><code>--exclusive</code></td><td>off</td><td>WASAPI exclusivo: evita el procesamiento de voz de Windows</td></tr>
+  </table></div>
+
+  <h3>Comandos</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Comando</th><th>Opciones</th><th>Qué hace</th></tr>
+    <tr><td><code>devices</code></td><td>—</td><td>Lista dispositivos, host API, canales, fs soportadas; marca los predeterminados.</td></tr>
+    <tr><td><code>diagnose</code></td><td><code>--duration 2</code> <code>--min-snr 15</code> <code>--plot RUTA</code></td><td>Ruido + barrido 1 kHz→~23 kHz, tabla de SNR por kHz, banda recomendada y comando exacto. Sale con código 2 si no hay banda usable.</td></tr>
+    <tr><td><code>calibrate</code></td><td><code>--out .sonar/background.npz</code></td><td>Graba el perfil de fondo con huella de configuración.</td></tr>
+    <tr><td><code>ping</code></td><td><code>--background</code> <code>--no-background</code> <code>--plot</code> <code>--show</code> <code>--json</code> <code>--save-raw</code></td><td>Una medición. Usa <code>.sonar/background.npz</code> automáticamente si existe.</td></tr>
+    <tr><td><code>live</code></td><td><code>--background</code> <code>--no-background</code> <code>--history 120</code></td><td>A-scan + waterfall en tiempo real.</td></tr>
+    <tr><td><code>sweep</code></td><td><code>--background</code> <code>--no-background</code> <code>--out sweep.png</code> <code>--show</code></td><td>Radar polar girando el equipo a mano.</td></tr>
+  </table></div>
+
+  <h4>Salida JSON de <code>ping --json</code></h4>
+  <div class="code"><div class="lbl">JSON</div><pre>{
+  <span class="k">"speed_of_sound"</span>: 343.21,
+  <span class="k">"direct_snr_db"</span>: 29.4,
+  <span class="k">"pings_averaged"</span>: 64,
+  <span class="k">"echoes"</span>: [ { <span class="k">"distance_m"</span>: 0.26, <span class="k">"snr_db"</span>: 18.4, <span class="k">"delay_s"</span>: 0.001515 } ]
+}</pre></div>
+</section>
+
+<!-- ================================================================ CONFIG -->
+<section id="config">
+  <div class="eyebrow">Referencia</div>
+  <h2><code>SonarConfig</code>: todos los parámetros</h2>
+  <p>Dataclass inmutable que se valida al crearse. <code>with_overrides(**kw)</code> devuelve una copia validada ignorando los <code>None</code>.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Campo</th><th>Defecto</th><th>Significado</th></tr>
+    <tr><td><code>fs</code></td><td>48000</td><td>Tasa de muestreo</td></tr>
+    <tr><td><code>f_start</code>, <code>f_end</code></td><td>18000, 22000</td><td>Banda del chirp. <code>f_end &lt; 0.98·Nyquist</code></td></tr>
+    <tr><td><code>chirp_duration</code></td><td>0.008 s</td><td>≥ 16 muestras</td></tr>
+    <tr><td><code>window</code>, <code>tukey_alpha</code></td><td>"tukey", 0.25</td><td>Ventana del chirp</td></tr>
+    <tr><td><code>n_pings</code>, <code>warmup_pings</code></td><td>16, 2</td><td>Pings promediados / de calentamiento</td></tr>
+    <tr><td><code>ping_interval</code></td><td>0.06 s</td><td>Debe cubrir guarda + ida y vuelta a <code>max_range</code> + chirp</td></tr>
+    <tr><td><code>pre_silence</code></td><td>0.05 s</td><td>≥ 2 chirps; referencia de ruido</td></tr>
+    <tr><td><code>latency_margin</code></td><td>0.5 s</td><td>Cola grabada para absorber latencia</td></tr>
+    <tr><td><code>max_slip_samples</code></td><td>128</td><td>Mayor desfase de buffer que busca la re-alineación</td></tr>
+    <tr><td><code>temperature_c</code>, <code>speed_of_sound_override</code></td><td>20, None</td><td>Velocidad del sonido</td></tr>
+    <tr><td><code>direct_path_m</code></td><td>0.0</td><td>Separación parlante–micrófono</td></tr>
+    <tr><td><code>amplitude</code>, <code>max_amplitude</code></td><td>0.1, 0.5</td><td><code>0 &lt; amplitude ≤ max_amplitude ≤ 1</code></td></tr>
+    <tr><td><code>min_range</code>, <code>max_range</code></td><td>0.15, 5.0 m</td><td>Ventana de búsqueda</td></tr>
+    <tr><td><code>n_echoes</code></td><td>5</td><td>Máximo de ecos reportados</td></tr>
+    <tr><td><code>min_snr_db</code></td><td>12</td><td>Umbral global</td></tr>
+    <tr><td><code>cfar_snr_db</code></td><td>8</td><td>Umbral local OS-CFAR</td></tr>
+    <tr><td><code>min_direct_snr_db</code></td><td>15</td><td>SNR mínimo del camino directo para confiar en la medición</td></tr>
+    <tr><td><code>sidelobe_margin_db</code></td><td>6</td><td>Margen sobre lóbulos laterales esperados</td></tr>
+    <tr><td><code>clip_level</code></td><td>0.99</td><td>Nivel considerado saturación</td></tr>
+    <tr><td><code>input_device</code>, <code>output_device</code></td><td>None</td><td>Índice o subcadena del nombre</td></tr>
+    <tr><td><code>host_api</code>, <code>exclusive</code></td><td>None, False</td><td>Filtro de host API / WASAPI exclusivo</td></tr>
+  </table></div>
+  <h4>Magnitudes derivadas</h4>
+  <p><code>speed_of_sound</code>, <code>bandwidth</code>, <code>range_resolution</code> (c/2B), <code>chirp_samples</code>, <code>frame_samples</code>,
+  <code>pre_silence_samples</code>, <code>mainlobe_samples</code> (⌈fs/B⌉), <code>guard_samples</code>, <code>range_to_samples()</code>,
+  <code>samples_to_range()</code>, <code>fingerprint()</code>.</p>
+</section>
+
+<!-- ================================================================ ERRORES -->
+<section id="errores">
+  <div class="eyebrow">Referencia</div>
+  <h2>Errores y cómo se reportan</h2>
+  <p>Todo error hereda de <code>SonarError(message, hint)</code>. La CLI imprime <strong>Error:</strong> y <strong>Cómo resolverlo:</strong> y sale con código 2.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Clase</th><th>Cuándo</th><th>Qué hacer</th></tr>
+    <tr><td><code>ConfigError</code></td><td>Parámetro inválido o amplitud sobre el tope</td><td>El mensaje dice el valor válido (p. ej. intervalo mínimo en ms)</td></tr>
+    <tr><td><code>DeviceNotFoundError</code></td><td>Nombre/índice inexistente o ambiguo en la host API</td><td><code>sonar devices</code>, nombre más específico</td></tr>
+    <tr><td><code>UnsupportedSampleRateError</code></td><td>PortAudio rechaza fs (−9997)</td><td><code>--fs 48000</code></td></tr>
+    <tr><td><code>MicrophonePermissionError</code></td><td>Grabación en cero exacto o error de host (−9999)</td><td>Permisos del SO, mute, tapa, Armoury Crate</td></tr>
+    <tr><td><code>ClippingError</code></td><td>Muestras ≥ 0.99 FS</td><td>Bajar amplitud/volumen/ganancia; alejarse</td></tr>
+    <tr><td><code>LowSNRError</code></td><td>SNR del directo &lt; 15 dB con ambiente ruidoso</td><td>Silencio, más pings, más volumen</td></tr>
+    <tr><td><code>BandOutOfResponseError</code></td><td>Ambiente silencioso pero el chirp no aparece</td><td><code>sonar diagnose</code> y su banda</td></tr>
+    <tr><td><code>AudioIOError</code></td><td>Dispositivo ocupado, PortAudio ausente, latencia &gt; margen</td><td>Cerrar apps; instalar <code>libportaudio2</code></td></tr>
+    <tr><td><code>IncompatibleBackgroundError</code></td><td>Huella del fondo distinta o archivo corrupto</td><td>Re-ejecutar <code>calibrate</code> o <code>--no-background</code></td></tr>
+  </table></div>
+  <p>En <code>live</code> y <code>sweep</code>, <code>LowSNRError</code> y <code>ClippingError</code> son transitorios: se muestran y el loop continúa.</p>
+</section>
+
+<!-- ================================================================ TESTS -->
+<section id="tests">
+  <div class="eyebrow">Referencia</div>
+  <h2>Tests: 88 casos, cero hardware</h2>
+  <p><code>FakeAudioDevice</code> alimenta la cadena <em>real</em> con <code>simulation.py</code>. El simulador y el estimador comparten la
+  misma velocidad del sonido (343 m/s), así cualquier error de distancia viene sólo del procesamiento.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Archivo</th><th>Casos</th><th>Qué garantiza</th></tr>
+    <tr><td><code>test_ranging.py</code></td><td>29</td><td>Error &lt; 2 cm en 0.3–4.8 m × 3 latencias; Hypothesis (30 ejemplos: distancia, ganancia, latencia 0–400 ms, semilla); 4 ecos simultáneos; sin ecos ⇒ sin detecciones; ecos a 15 cm separados; bajo resolución se fusionan; el promediado recupera un eco débil; temperatura; orden por SNR; slips de buffer.</td></tr>
+    <tr><td><code>test_config.py</code></td><td>13</td><td>Defaults seguros, c(T), ida y vuelta distancia↔muestras, configuraciones inválidas con pista, tope de amplitud.</td></tr>
+    <tr><td><code>test_processing.py</code></td><td>12</td><td>Pico del filtro adaptado, desplazamiento fraccionario, parábola exacta, ruido ↓ √N, autocorrelación, silencio digital, clipping, fondo ida/vuelta y corrupto.</td></tr>
+    <tr><td><code>test_cli.py</code></td><td>9</td><td>devices, ping JSON, calibrate→ping con fondo y gráfica, fondo incompatible, permiso accionable, config inválida, diagnose recomienda audible, sweep polar, <code>--save-raw</code>.</td></tr>
+    <tr><td><code>test_engine.py</code></td><td>9</td><td>Resta de fondo (incl. cambios de latencia y volumen), mic bloqueado, clipping, SNR bajo, banda fuera de respuesta, fallback audible, fs no soportada, tope en el dispositivo.</td></tr>
+    <tr><td><code>test_diagnostics.py</code></td><td>8</td><td>Preferencia casi-ultrasonido → audible → cualquiera; sin banda usable; cobertura; hardware plano, con caída sobre 16 kHz, mic bloqueado.</td></tr>
+    <tr><td><code>test_signal.py</code></td><td>5</td><td>Longitud/pico/bordes del chirp, energía dentro de la banda, tren de pings, amplitud del barrido.</td></tr>
+    <tr><td><code>test_viz.py</code></td><td>3</td><td>A-scan, LiveView, radar polar y respuesta (backend Agg).</td></tr>
+  </table></div>
+  <h4>Escribir un test nuevo</h4>
+  <div class="code"><div class="lbl">tests/test_mi_caso.py<button class="copy">Copiar</button></div><pre><span class="k">from</span> conftest <span class="k">import</span> make_engine, scene
+<span class="k">from</span> sonar.simulation <span class="k">import</span> Reflector
+
+<span class="k">def</span> test_pared_a_dos_metros(cfg):
+    m = make_engine(cfg, scene(Reflector(2.0, 0.05), latency_s=0.07, noise_std=1e-3)).measure()
+    <span class="k">assert</span> abs(m.echoes[0].distance_m - 2.0) &lt; 0.02</pre></div>
+  <p>Si encuentras un fallo de hardware nuevo, la práctica del proyecto es: <strong>modelarlo en el simulador</strong> (como <code>Scene.slips</code>),
+  escribir el test que falla y luego arreglar el procesamiento.</p>
+</section>
+
+<!-- ================================================================ PROBLEMAS -->
+<section id="problemas">
+  <div class="eyebrow">Referencia</div>
+  <h2>Solución de problemas</h2>
+  <details><summary>"La grabación es silencio digital absoluto"</summary>
+    <ol><li>¿Tapa abierta?</li><li>¿Micrófono en mute? (Configuración → Sonido → Entrada)</li><li>¿Armoury Crate / app de IA lo deshabilitó? → <code>mmsys.cpl</code> → mostrar deshabilitados → Habilitar</li><li>Permisos de micrófono para apps de escritorio</li><li>macOS: habilita tu terminal en Privacidad → Micrófono y reiníciala</li></ol></details>
+  <details><summary>Los primeros pings salen bien y luego desaparecen</summary><p>Procesamiento de voz de Windows en modo compartido. Usa <code>--host-api WASAPI --exclusive</code> y desactiva las mejoras de audio.</p></details>
+  <details><summary>"Dispositivo … en host API 'WASAPI': varios"</summary><p>El nombre coincide con más de un dispositivo. Usa una subcadena más larga, p. ej. <code>"Altavoces (Realtek"</code> en vez de <code>"Altavoces"</code>.</p></details>
+  <details><summary>"El modo exclusivo sólo existe en dispositivos WASAPI"</summary><p>Añade <code>--host-api WASAPI</code> o quita <code>--exclusive</code> (macOS/Linux no lo necesitan).</p></details>
+  <details><summary>"El dispositivo está ocupado"</summary><p>Otra app usa el micrófono o parlante (en exclusivo, Windows no lo comparte). Cierra Zoom, Discord, Teams, el navegador.</p></details>
+  <details><summary>"No se escucha el chirp en 18.0–22.0 kHz"</summary><p>Tu hardware no responde en casi-ultrasonido (muy común). Ejecuta <code>diagnose</code> y usa la banda recomendada, o <code>--band audible</code>.</p></details>
+  <details><summary>Ecos que no se mueven cuando muevo el objeto</summary><p>Es clutter: reflexiones fijas o variables de la escena. Recalibra sin moverte, aléjate del equipo, sube <code>--interval-ms</code> a 150–250.</p></details>
+  <details><summary>Distancias con error constante</summary><p>Separación parlante–micrófono: <code>--direct-path &lt;m&gt;</code>. Error proporcional a la distancia → temperatura incorrecta (<code>--temperature</code>).</p></details>
+  <details><summary>"ping_interval … es demasiado corto para max_range"</summary><p>El mensaje trae el mínimo; sube <code>--interval-ms</code> o baja <code>--max-range</code>. Usa la <a href="#calculadora">calculadora</a>.</p></details>
+  <details><summary>Clipping</summary><p>Baja <code>--amplitude</code> o el volumen del sistema, o separa el equipo de superficies muy cercanas.</p></details>
+  <details><summary>pytest no puede escribir en la carpeta temporal</summary><p><code>uv run pytest --basetemp=.pytest_tmp</code></p></details>
+</section>
+
+<!-- ================================================================ LIMITACIONES -->
+<section id="limitaciones">
+  <div class="eyebrow">Comunidad</div>
+  <h2>Limitaciones y roadmap</h2>
+  <h3>Limitaciones conocidas</h3>
+  <ul>
+    <li><strong>Sin dirección</strong>: un micrófono sólo da distancia. El radar de <code>sweep</code> depende de girar el equipo y de la (pobre) directividad del parlante.</li>
+    <li><strong>Hardware no especificado</strong> sobre 20 kHz; la respuesta varía mucho entre modelos.</li>
+    <li><strong>Alcance corto</strong> con objetos pequeños (≈ 30–50 cm en la laptop de prueba); superficies blandas devuelven poco.</li>
+    <li><strong>Escena estática</strong>: la resta de fondo asume que nada se mueve; personas cerca o cambios de temperatura dejan residuos.</li>
+    <li><strong>Zona ciega</strong> bajo ~15 cm.</li>
+  </ul>
+  <h3>Ideas para contribuir</h3>
+  <div class="grid g2">
+    <div class="card"><h4>🎯 Dirección (TDOA)</h4><p>Usar los dos canales del array de micrófonos (muchas laptops tienen 2) para estimar ángulo por diferencia de tiempo de llegada.</p></div>
+    <div class="card"><h4>🔊 Hardware externo</h4><p>Perfiles probados con micrófono USB y tweeter externo para casi-ultrasonido real.</p></div>
+    <div class="card"><h4>📏 Confirmar <code>--direct-path</code></h4><p>Validar con cinta la hipótesis del sesgo de −4 cm.</p></div>
+    <div class="card"><h4>🧠 Seguimiento temporal</h4><p>Filtro de Kalman/tracking en <code>live</code> para separar objetos que se mueven del clutter.</p></div>
+    <div class="card"><h4>🗂️ Base de hardware</h4><p>Tabla comunitaria de modelos de laptop con banda útil y comando verificado.</p></div>
+    <div class="card"><h4>⚙️ CI</h4><p>GitHub Actions corriendo <code>uv run pytest</code> en Windows, macOS y Linux (no requiere audio).</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ CONTRIBUIR -->
+<section id="contribuir">
+  <div class="eyebrow">Comunidad</div>
+  <h2>Contribuir</h2>
+  <h3>Flujo</h3>
+  <div class="code"><div class="lbl">Terminal<button class="copy">Copiar</button></div><pre>git checkout -b mi-mejora
+uv sync
+uv run pytest            <span class="c"># todo verde antes de empezar</span>
+<span class="c"># 1) si es un fallo de hardware: modélalo en simulation.py y escribe el test que falla</span>
+<span class="c"># 2) arregla processing/detection</span>
+uv run pytest            <span class="c"># todo verde al terminar</span></pre></div>
+  <h3>Convenciones del código</h3>
+  <ul>
+    <li>El dominio (<code>signal</code>, <code>processing</code>, <code>detection</code>, <code>diagnostics</code>) es puro: sin I/O de audio.</li>
+    <li>Toda configuración pasa por <code>SonarConfig</code> y se valida ahí con un mensaje accionable.</li>
+    <li>Todo error es un <code>SonarError</code> con <code>hint</code> que diga cómo resolverlo.</li>
+    <li>Docstrings y comentarios en inglés; mensajes al usuario en español.</li>
+    <li>Comentarios que expliquen el <em>porqué</em> (sobre todo lo aprendido en hardware).</li>
+  </ul>
+  <h3>Reporta tu hardware</h3>
+  <p>El aporte más valioso: saber qué funciona en otras máquinas. Abre un issue con esta plantilla:</p>
+  <div class="code"><div class="lbl">Plantilla de issue<button class="copy">Copiar</button></div><pre>### Hardware
+- Laptop / modelo:
+- Sistema operativo:
+- Micrófono / parlante (nombre en `sonar devices`):
+- Host API usada (WASAPI exclusivo / CoreAudio / ALSA / PulseAudio):
+
+### Diagnóstico
+- Banda recomendada por `sonar diagnose`:
+- Adjunta respuesta.png
+
+### Medición
+- Comando completo:
+- Objetivo y distancia real (cinta):
+- Distancia medida (3 corridas):
+- Adjunta el A-scan
+
+### Problemas encontrados y cómo los resolviste</pre></div>
+  <h3>Checklist para publicar el repositorio</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Tarea</th><th>Estado</th></tr>
+    <tr><td><code>git init</code> y primer commit (el proyecto aún no es repositorio git)</td><td><span class="tag warn">pendiente</span></td></tr>
+    <tr><td>Archivo <code>LICENSE</code> (p. ej. MIT o Apache-2.0)</td><td><span class="tag warn">pendiente</span></td></tr>
+    <tr><td>Declarar <code>rich</code> en <code>pyproject.toml</code> (<code>cli.py</code> lo importa directo; hoy llega como dependencia de typer)</td><td><span class="tag warn">pendiente</span></td></tr>
+    <tr><td>README: mencionar que muchas laptops necesitan banda audible y enlazar esta documentación</td><td><span class="tag warn">pendiente</span></td></tr>
+    <tr><td>Workflow de CI con <code>uv run pytest</code></td><td><span class="tag warn">pendiente</span></td></tr>
+    <tr><td>Imágenes de la documentación versionadas (<code>!docs/img/*.png</code> en <code>.gitignore</code>)</td><td><span class="tag ok">hecho</span></td></tr>
+    <tr><td>GitHub Pages: Settings → Pages → rama <code>main</code>, carpeta <code>/docs</code></td><td><span class="tag info">al publicar</span></td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ GLOSARIO -->
+<section id="glosario">
+  <div class="eyebrow">Comunidad</div>
+  <h2>Glosario</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Término</th><th>Definición</th></tr>
+    <tr><td>A-scan</td><td>Perfil de eco: intensidad (SNR) en función de la distancia para una medición.</td></tr>
+    <tr><td>Camino directo</td><td>Sonido que va del parlante al micrófono sin rebotar. Es la referencia t₀.</td></tr>
+    <tr><td>Chirp</td><td>Señal cuya frecuencia sube (o baja) linealmente durante el pulso.</td></tr>
+    <tr><td>Clutter</td><td>Ecos no deseados de la escena (muebles, mesa, personas).</td></tr>
+    <tr><td>CFAR / OS-CFAR</td><td>Umbral de tasa constante de falsas alarmas; la variante OS usa la mediana del vecindario.</td></tr>
+    <tr><td>dBFS</td><td>Decibeles relativos a la escala completa digital (0 dBFS = máximo).</td></tr>
+    <tr><td>Envolvente de Hilbert</td><td>Magnitud de la señal analítica: el "contorno" de una señal oscilante.</td></tr>
+    <tr><td>Fase cero</td><td>Filtrado ida y vuelta que no desplaza la señal en el tiempo.</td></tr>
+    <tr><td>Filtro adaptado</td><td>Correlación con la señal emitida; maximiza el SNR y comprime el chirp en un pico.</td></tr>
+    <tr><td>Host API</td><td>Capa de audio del SO que usa PortAudio (MME, DirectSound, WASAPI, WDM-KS, CoreAudio, ALSA…).</td></tr>
+    <tr><td>Lóbulo lateral</td><td>Picos secundarios alrededor del pico principal del filtro adaptado; pueden parecer ecos falsos.</td></tr>
+    <tr><td>Nyquist</td><td>fs/2: frecuencia máxima representable (24 kHz a 48 kHz).</td></tr>
+    <tr><td>Promediado coherente</td><td>Sumar repeticiones alineadas a la muestra: la señal se refuerza, el ruido baja √N.</td></tr>
+    <tr><td>Resolución en distancia</td><td>c/2B: separación mínima entre dos ecos distinguibles.</td></tr>
+    <tr><td>SNR</td><td>Relación señal/ruido, en dB.</td></tr>
+    <tr><td>WASAPI exclusivo</td><td>Modo de Windows en que una app usa el dispositivo sin mezclador ni efectos del sistema.</td></tr>
+    <tr><td>Waterfall</td><td>Imagen de A-scans apilados en el tiempo.</td></tr>
+  </table></div>
+</section>
+
+<footer>
+  Batman Sonar · documentación del proyecto · versión 0.1.0 · verificada contra el código y 88/88 tests el 29 de octubre de 2026.
+</footer>
+
+</div>
+</main>
+</div>
+
+<script>
+(function(){
+  var store = {
+    get:function(k){try{return localStorage.getItem(k)}catch(e){return null}},
+    set:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  };
+
+  // Theme
+  var root = document.documentElement, themeLbl = document.getElementById('themeLbl');
+  function applyTheme(t){
+    if(t){root.setAttribute('data-theme',t)}else{root.removeAttribute('data-theme')}
+    themeLbl.textContent = t==='dark'?'Oscuro':t==='light'?'Claro':'Auto';
+  }
+  applyTheme(store.get('sonar-theme'));
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    var cur = root.getAttribute('data-theme');
+    var next = cur===null?'dark':cur==='dark'?'light':null;
+    applyTheme(next); store.set('sonar-theme', next||'');
+  });
+
+  // Mobile nav
+  document.getElementById('menuBtn').addEventListener('click',function(){document.body.classList.toggle('nav-open')});
+  document.querySelectorAll('.sidebar a').forEach(function(a){a.addEventListener('click',function(){document.body.classList.remove('nav-open')})});
+
+  // Copy buttons
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var text = btn.closest('.code').querySelector('pre').innerText;
+      var done = function(){btn.textContent='Copiado ✓';setTimeout(function(){btn.textContent='Copiar'},1400)};
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fallback)}else{fallback()}
+      function fallback(){var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');done()}catch(e){}t.remove()}
+    });
+  });
+
+  // Tutorial progress
+  var steps = Array.prototype.slice.call(document.querySelectorAll('.step'));
+  var saved = {}; try{saved = JSON.parse(store.get('sonar-steps')||'{}')}catch(e){}
+  function render(){
+    var n = 0;
+    steps.forEach(function(s){var on=!!saved[s.dataset.step];s.classList.toggle('done',on);s.querySelector('input').checked=on;if(on)n++});
+    document.getElementById('tpText').textContent = n+' de '+steps.length;
+    document.getElementById('tpBar').style.width = (100*n/steps.length)+'%';
+  }
+  steps.forEach(function(s){
+    s.querySelector('input').addEventListener('change',function(e){saved[s.dataset.step]=e.target.checked;store.set('sonar-steps',JSON.stringify(saved));render()});
+  });
+  document.getElementById('tpReset').addEventListener('click',function(){saved={};store.set('sonar-steps','{}');render()});
+  render();
+
+  // Scrollspy + reading progress
+  var links = {}; document.querySelectorAll('.sidebar a').forEach(function(a){links[a.getAttribute('href').slice(1)]=a});
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  var bar = document.getElementById('readProgress');
+  function onScroll(){
+    var y = window.scrollY + 90, current = sections[0].id;
+    sections.forEach(function(s){if(s.offsetTop<=y)current=s.id});
+    Object.keys(links).forEach(function(k){links[k].classList.toggle('active',k===current)});
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (h>0?100*window.scrollY/h:0)+'%';
+  }
+  window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+
+  // Calculator (mirrors SonarConfig)
+  var ids = ['cFs','cFe','cT','cRate','cChirp','cInt','cMax','cN','cDp','cDelay'];
+  function v(id){return parseFloat(document.getElementById(id).value)}
+  function row(label,value,cls){return '<div><span>'+label+'</span><b'+(cls?' style="color:var(--'+cls+')"':'')+'>'+value+'</b></div>'}
+  function calc(){
+    var fs0=v('cFs'), fe=v('cFe'), T=v('cT'), rate=v('cRate'), chirp=v('cChirp')/1000, intv=v('cInt')/1000, maxR=v('cMax'), N=v('cN'), dp=v('cDp'), delay=v('cDelay')/1000;
+    var c = 331.3*Math.sqrt(1+T/273.15), B = fe-fs0, out = '';
+    if(!(B>0)){document.getElementById('cOut').innerHTML=row('Banda','inválida: f_end ≤ f_start','bad');return}
+    var nyqOk = fe < 0.98*rate/2;
+    var chirpS = Math.round(chirp*rate);
+    var need = (chirpS + (2*maxR-dp)/c*rate + chirpS)/rate*1000;
+    out += row('Velocidad del sonido', c.toFixed(1)+' m/s');
+    out += row('Ancho de banda', (B/1000).toFixed(1)+' kHz');
+    out += row('Resolución c/2B', (c/(2*B)*100).toFixed(2)+' cm');
+    out += row('Chirp en el aire', (c*chirp).toFixed(2)+' m');
+    out += row('Lóbulo principal', Math.max(2,Math.ceil(rate/B))+' muestras');
+    out += row('1 muestra equivale a', (c/rate/2*1000).toFixed(2)+' mm');
+    out += row('Nyquist (f_end < 0.98·fs/2)', nyqOk?'OK':'demasiado alto', nyqOk?'ok':'bad');
+    out += row('Intervalo mínimo', need.toFixed(0)+' ms', need < intv*1000 ? 'ok' : 'bad');
+    out += row('Ganancia del promedio', (10*Math.log10(Math.max(1,N))).toFixed(1)+' dB');
+    out += row('Retardo → distancia', ((c*delay+dp)/2).toFixed(3)+' m');
+    out += row('Duración del tren', ((0.05 + (N+2)*intv + intv + 0.5)).toFixed(2)+' s');
+    document.getElementById('cOut').innerHTML = out;
+  }
+  ids.forEach(function(id){document.getElementById(id).addEventListener('input',calc)}); calc();
+})();
+</script>
+</body>
+</html>

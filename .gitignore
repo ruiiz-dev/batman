@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.pytest_tmp/
+.hypothesis/
+.sonar/
+*.png
+
+# Imágenes de la documentación (sí se versionan)
+!docs/img/*.png
+
+# Originales de las fotos; las publicadas están en docs/img
+WhatsApp*.jpeg
