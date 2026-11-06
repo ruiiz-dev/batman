@@ -13,6 +13,7 @@ mide distancias a superficies por el tiempo de vuelo del eco.
 
 ## Sustentación
 
+- Entrada de bitácora: [RZ-001 · Radar de Batman](https://estebanjimenezruiz.com/bitacora/rz-001), con la demo, la historia del proyecto y la evidencia.
 - [Documentación del sonar](https://ruiiz-dev.github.io/batman/) y [hardware del sonar 3D](https://ruiiz-dev.github.io/batman/hardware.html), con materiales y conexiones.
 - Código de las pruebas en la Raspberry Pi Pico: [`pico/`](pico/).
 
